@@ -7,6 +7,7 @@ import {
     ActivityIndicator,
     Image,
     StyleSheet,
+    Modal,
 } from 'react-native';
 import { useTheme, DrawerActions, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -30,6 +31,10 @@ import BannerAbsenAdmin from '../../components/Banner/BannerAbsenAdmin';
 import BannerAbsenSales from '../../components/Banner/BannerAbsenSales';
 import BannerMapping from '../../components/Banner/BannerMapping';
 import BannerScanRack from '../../components/Banner/BannerScanRack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useDispatch } from 'react-redux';
+import { logout } from '../../redux/Store/authSlice';
+import BannerListPiutang from '../../components/Banner/BannerListPiutang';
 
 // Types
 interface UserDetails {
@@ -60,7 +65,7 @@ interface NotificationResponse {
 }
 
 type RootStackParamList = {
-    SignIn: undefined;
+    Login: undefined;
     Home: undefined;
     Notifications: undefined;
     // Add other routes as needed
@@ -86,6 +91,8 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [unreadCount, setUnreadCount] = useState<number>(0);
     const insets = useSafeAreaInsets();
+    const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
+    const dispatch = useDispatch();
 
     // Load unread notification count
     const loadUnreadCount = useCallback(
@@ -137,7 +144,7 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                 if (!storedToken) {
                     navigation.reset({
                         index: 0,
-                        routes: [{ name: 'SignIn' }],
+                        routes: [{ name: 'Login' }],
                     });
                     return;
                 }
@@ -153,7 +160,7 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                 console.error('Error checking token:', error);
                 navigation.reset({
                     index: 0,
-                    routes: [{ name: 'SignIn' }],
+                    routes: [{ name: 'Login' }],
                 });
             } finally {
                 setIsLoading(false);
@@ -168,6 +175,22 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
 
         return unsubscribe;
     }, [navigation, loadUnreadCount]);
+
+    const handleLogout = async () => {
+        try {
+            // Clear storage
+            await AsyncStorage.removeItem('tokenUser');
+            await AsyncStorage.removeItem('dataDetailUser');
+            await AsyncStorage.removeItem('idAbsenCheckIn');
+            
+            // Dispatch logout action - ini akan trigger re-render Routes
+            dispatch(logout());
+            
+            // Navigation otomatis karena conditional rendering di Routes
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+    };
 
     // Get profile picture URL
     const getProfilePicUrl = (): { uri: string } | number => {
@@ -239,7 +262,7 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                     </View>
 
                     {/* Grid Menu Button */}
-                    <TouchableOpacity
+                    {/* <TouchableOpacity
                         // onPress={handleOpenDrawer}
                         style={[
                             styles.gridButton,
@@ -247,8 +270,54 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                         ]}
                     >
                         <FeatherIcon color={COLORS.title} size={22} name="grid" />
+                    </TouchableOpacity> */}
+
+                    <TouchableOpacity
+                        onPress={() => setIsLogoutModalVisible(true)}
+                        style={[
+                            styles.gridButton,
+                            { borderColor: COLORS.borderColor },
+                        ]}
+                    >
+                        <FeatherIcon color={COLORS.title} size={22} name="grid" />
                     </TouchableOpacity>
+
                 </View>
+
+                <Modal
+                    animationType="fade"
+                    transparent={true}
+                    visible={isLogoutModalVisible}
+                    onRequestClose={() => setIsLogoutModalVisible(false)}
+                    >
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Konfirmasi Logout</Text>
+                        <Text style={styles.modalMessage}>
+                            Apakah Anda yakin ingin keluar dari aplikasi?
+                        </Text>
+                        
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity
+                            style={[styles.modalButton, styles.cancelButton]}
+                            onPress={() => setIsLogoutModalVisible(false)}
+                            >
+                            <Text style={styles.cancelButtonText}>Batal</Text>
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                            style={[styles.modalButton, styles.logoutButton]}
+                            onPress={async () => {
+                                setIsLogoutModalVisible(false);
+                                await handleLogout();
+                            }}
+                            >
+                            <Text style={styles.logoutButtonText}>Logout</Text>
+                            </TouchableOpacity>
+                        </View>
+                        </View>
+                    </View>
+                    </Modal>
 
                 {/* Scrollable Content */}
                 <ScrollView showsVerticalScrollIndicator={false}>
@@ -264,7 +333,7 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                     <BannerAbsenSales />
                     <BannerAbsenAdmin />
                     {/* <BannerSlider4 /> */}
-                    {/* <BannerListPiutang /> */}
+                    <BannerListPiutang />
                     {/* <BannerSliderPO /> */}
 
                     {/* Agenda Kerja Section */}
@@ -373,6 +442,71 @@ const styles = StyleSheet.create({
     bottomSpacing: {
         marginBottom: 80,
     },
+    modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+    color: '#333',
+  },
+  modalMessage: {
+    fontSize: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+    color: '#666',
+    lineHeight: 22,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  logoutButton: {
+    backgroundColor: '#dc3545',
+  },
+  logoutButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
 
 export default Home;

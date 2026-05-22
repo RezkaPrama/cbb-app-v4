@@ -13,6 +13,8 @@ import Checkin from '../screens/Absen/Checkin';
 import Checkout from '../screens/Absen/Checkout';
 import MappingToko from '../screens/Mapping/MappingToko';
 import ScanRack from '../screens/Scan/ScanRack';
+import ShelfScanner from '../screens/Scan/ShelfScanner';
+import ShelfForm from '../screens/Scan/ShelfForm';
 import AttendanceWFH from '../screens/Absen/AttendanceWFH';
 import AttendanceSiteVisitor from '../screens/Absen/AttendanceSiteVisitor';
 
@@ -27,6 +29,13 @@ export type RootStackParamList = {
   AttendanceSiteVisitor: undefined;
   MappingToko: undefined;
   ScanRack: undefined;
+  ShelfScanner: undefined;
+   // ✅ FIX: tambahkan tipe params yang sesuai dengan ShelfFormScreenProps
+  ShelfForm: {
+    scannedSerial?: string;
+    scannedStore?: { pelanggan: string; namaToko: string };
+    manualMode?: boolean;
+  };
   AbsenSales: undefined;
   Checkin: { visitCount: number };
   Checkout: {
@@ -152,6 +161,23 @@ const Routes: React.FC = () => {
                 title: 'Scan Rack',
               }}
             />
+            <Stack.Screen 
+              name="ShelfScanner" 
+              component={ShelfScanner}
+              options={{
+                headerShown: false,
+                title: 'Shelf Scanner',
+              }}
+            />
+            <Stack.Screen 
+              name="ShelfForm" 
+              component={ShelfForm}
+              options={{
+                headerShown: false,
+                title: 'Shelf Form',
+              }}
+            />
+
           </>
         )}
       </Stack.Navigator>

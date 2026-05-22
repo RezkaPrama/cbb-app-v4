@@ -6,50 +6,28 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  TextInput,
   ViewStyle,
   TextStyle,
 } from "react-native";
-import { useFocusEffect, useTheme, RouteProp } from '@react-navigation/native';
+import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { COLORS, FONTS, SIZES } from "../../constants/theme";
-import HeaderStyle1 from "../../components/Header/HeaderStyle1";
-import { GlobalStyleSheet } from "../../constants/GlobalStyleSheet";
-import CustomInput from "../../components/Input/CustomInput";
 import moment from 'moment-timezone';
 import Toast from 'react-native-toast-message';
-import CircleButton from "../../components/Input/CircleButton";
 import * as Location from 'expo-location';
-import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from "@react-native-picker/picker";
-import { storeDataLara } from "../../utils/asyncStorage";
-import { getDataLara } from "../../utils/asyncStorage";
+import { storeDataLara, getDataLara } from "../../utils/asyncStorage";
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import HeaderStyle1 from "../../components/Header/HeaderStyle1";
 
 // Types
-interface Position {
-  latitude: number;
-  longitude: number;
-}
-
-interface UserPosition {
-  id: number;
-  name: string;
-}
-
-interface UserDetails {
-  id: number;
-  name: string;
-  position: UserPosition;
-}
-
-interface PickerOption {
-  label: string;
-  value: string;
-}
-
+interface Position { latitude: number; longitude: number; }
+interface UserPosition { id: number; name: string; }
+interface UserDetails { id: number; name: string; position: UserPosition; }
+interface PickerOption { label: string; value: string; }
 interface CheckInResponse {
-  data?: {
-    id: number;
-  };
+  data?: { id: number };
   message?: string;
   errors?: Record<string, string[] | string>;
 }
@@ -58,7 +36,7 @@ type RootStackParamList = {
   Checkin: { visitCount: number };
   AbsenMasuk: undefined;
   AbsenSales: undefined;
-  Home: undefined;
+  Main: undefined;
 };
 
 type CheckinNavigationProp = StackNavigationProp<RootStackParamList, 'Checkin'>;
@@ -69,9 +47,80 @@ interface CheckinProps {
   route: CheckinRouteProp;
 }
 
+// ── Reusable icon input ────────────────────────────────────────
+interface IconInputProps {
+  iconName: string;
+  placeholder: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  keyboardType?: 'default' | 'numeric' | 'email-address';
+  multiline?: boolean;
+  numberOfLines?: number;
+}
+
+const IconInput: React.FC<IconInputProps> = ({
+  iconName, placeholder, value, onChangeText,
+  keyboardType = 'default', multiline = false, numberOfLines = 1,
+}) => (
+  <View style={[iStyles.wrapper, multiline && iStyles.wrapperMultiline]}>
+    <View style={iStyles.iconBox}>
+      <MaterialCommunityIcons name={iconName as any} size={18} color="#94a3b8" />
+    </View>
+    <View style={iStyles.divider} />
+    <TextInput
+      style={[iStyles.input, multiline && iStyles.inputMultiline]}
+      placeholder={placeholder}
+      placeholderTextColor="#cbd5e1"
+      value={value}
+      onChangeText={onChangeText}
+      keyboardType={keyboardType}
+      multiline={multiline}
+      numberOfLines={numberOfLines}
+      textAlignVertical={multiline ? 'top' : 'center'}
+    />
+  </View>
+);
+
+const iStyles = StyleSheet.create({
+  wrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    overflow: 'hidden',
+  } as ViewStyle,
+  wrapperMultiline: {
+    alignItems: 'flex-start',
+  } as ViewStyle,
+  iconBox: {
+    width: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+  } as ViewStyle,
+  divider: {
+    width: 1,
+    height: '60%',
+    backgroundColor: '#f1f5f9',
+  } as ViewStyle,
+  input: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 14,
+    color: '#0f172a',
+    fontWeight: '500',
+  } as TextStyle,
+  inputMultiline: {
+    paddingTop: 14,
+    minHeight: 90,
+  } as TextStyle,
+});
+
+// ── Main component ─────────────────────────────────────────────
 const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const [nameStore, setNameStore] = useState<string>('');
   const [purpose, setPurpose] = useState<string>('');
   const [token, setToken] = useState<string | null>(null);
@@ -82,67 +131,28 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
   const [locationSubscriber, setLocationSubscriber] = useState<Location.LocationSubscription | null>(null);
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
 
-  // Define picker options based on position
+  const visitCount = route.params?.visitCount ?? 1;
+
   const getPickerOptions = (): PickerOption[] => {
-    if (userDetails?.position.name === 'ASUP') {
-      return [
-        { label: "Penawaran", value: "Penawaran" },
-        { label: "Tagihan", value: "Tagihan" },
-        { label: "SO", value: "SO" },
-        { label: "Pasang Rak", value: "Pasang Rak" },
-        { label: "Konfimarsi PO", value: "Konfimarsi PO" },
-        { label: "Tarik Rak", value: "Tarik Rak" },
-        { label: "Pengenolan", value: "Pengenolan" },
-        { label: "Service Display & Maintanance", value: "Service Display & Maintanance" },
-        { label: "Cek Kiriman", value: "Cek Kiriman" },
-        { label: "Ambil Retur", value: "Ambil Retur" },
-        { label: "Mapping", value: "Mapping" },
-        { label: "CDM", value: "CDM" },
-        { label: "Adm Kantor", value: "Adm Kantor" }
-      ];
-    } else if (userDetails?.position.name === 'Sales') {
-      return [
-        { label: "Penawaran", value: "Penawaran" },
-        { label: "Tagihan", value: "Tagihan" },
-        { label: "SO", value: "SO" },
-        { label: "Pasang Rak", value: "Pasang Rak" },
-        { label: "Konfimarsi PO", value: "Konfimarsi PO" },
-        { label: "Tarik Rak", value: "Tarik Rak" },
-        { label: "Pengenolan", value: "Pengenolan" },
-        { label: "Service Display & Maintanance", value: "Service Display & Maintanance" },
-        { label: "Cek Kiriman", value: "Cek Kiriman" },
-        { label: "Ambil Retur", value: "Ambil Retur" },
-      ];
-    } else if (userDetails?.position.name === 'RSM') {
-      return [
-        { label: "Penawaran", value: "Penawaran" },
-        { label: "Tagihan", value: "Tagihan" },
-        { label: "SO", value: "SO" },
-        { label: "Pasang Rak", value: "Pasang Rak" },
-        { label: "Konfimarsi PO", value: "Konfimarsi PO" },
-        { label: "Tarik Rak", value: "Tarik Rak" },
-        { label: "Pengenolan", value: "Pengenolan" },
-        { label: "Service Display & Maintanance", value: "Service Display & Maintanance" },
-        { label: "Cek Kiriman", value: "Cek Kiriman" },
-        { label: "Ambil Retur", value: "Ambil Retur" },
-        { label: "Mapping", value: "Mapping" },
-        { label: "CDM", value: "CDM" },
-        { label: "Adm Kantor", value: "Adm Kantor" }
-      ];
-    }
-    // Default options if position is neither ASUP nor Sales
-    return [
+    const base: PickerOption[] = [
       { label: "Penawaran", value: "Penawaran" },
       { label: "Tagihan", value: "Tagihan" },
       { label: "SO", value: "SO" },
       { label: "Pasang Rak", value: "Pasang Rak" },
-      { label: "Konfimarsi PO", value: "Konfimarsi PO" },
+      { label: "Konfirmasi PO", value: "Konfimarsi PO" },
       { label: "Tarik Rak", value: "Tarik Rak" },
       { label: "Pengenolan", value: "Pengenolan" },
-      { label: "Service Display & Maintanance", value: "Service Display & Maintanance" },
+      { label: "Service Display & Maintenance", value: "Service Display & Maintanance" },
       { label: "Cek Kiriman", value: "Cek Kiriman" },
       { label: "Ambil Retur", value: "Ambil Retur" },
     ];
+    const extra: PickerOption[] = [
+      { label: "Mapping", value: "Mapping" },
+      { label: "CDM", value: "CDM" },
+      { label: "Adm Kantor", value: "Adm Kantor" },
+    ];
+    const pos = userDetails?.position?.name;
+    return (pos === 'ASUP' || pos === 'RSM') ? [...base, ...extra] : base;
   };
 
   useEffect(() => {
@@ -150,7 +160,6 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
       try {
         const storedToken = await getDataLara<string>("tokenUser");
         const storedUserDetails = await getDataLara<UserDetails>("dataDetailUser");
-        
         if (storedToken && storedUserDetails) {
           setUserDetails(storedUserDetails);
           setToken(storedToken);
@@ -163,98 +172,51 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
   }, []);
 
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-
-    return () => clearInterval(intervalId);
+    const id = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(id);
   }, []);
 
   const requestLocationPermission = async (): Promise<boolean> => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      const isGranted = status === "granted";
-      setLocationPermission(isGranted);
-
-      if (!isGranted) {
-        Toast.show({
-          type: 'error',
-          text1: 'Permission denied',
-          text2: 'Permission to access location was denied'
-        });
-      }
-
-      return isGranted;
-    } catch (error) {
-      console.error('Error requesting location permission:', error);
+      const granted = status === 'granted';
+      setLocationPermission(granted);
+      if (!granted) Toast.show({ type: 'error', text1: 'Izin Ditolak', text2: 'Izin lokasi diperlukan' });
+      return granted;
+    } catch {
       return false;
     }
   };
 
-  const startLocationUpdates = async (permissionGranted: boolean): Promise<void> => {
-    if (!permissionGranted) {
-      console.warn('Location permission not granted');
-      return;
-    }
-
+  const startLocationUpdates = async (granted: boolean): Promise<void> => {
+    if (!granted) return;
     try {
-      const location = await Location.getCurrentPositionAsync({});
-      setCurrentPosition({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-
-      const subscriber = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 900000,
-          distanceInterval: 10,
-        },
-        (newLocation: Location.LocationObject) => {
-          const newCoords: Position = {
-            latitude: newLocation.coords.latitude,
-            longitude: newLocation.coords.longitude,
-          };
-          if (
-            !currentPosition ||
-            currentPosition.latitude !== newCoords.latitude ||
-            currentPosition.longitude !== newCoords.longitude
-          ) {
-            setCurrentPosition(newCoords);
-          }
-        }
+      const loc = await Location.getCurrentPositionAsync({});
+      setCurrentPosition({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+      const sub = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.High, timeInterval: 900000, distanceInterval: 10 },
+        (l) => setCurrentPosition({ latitude: l.coords.latitude, longitude: l.coords.longitude })
       );
-
-      setLocationSubscriber(subscriber);
-    } catch (error) {
-      console.error('Error starting location updates:', error);
+      setLocationSubscriber(sub);
+    } catch {
+      console.error('Error starting location');
     }
   };
 
   const stopLocationUpdates = (): void => {
-    if (locationSubscriber) {
-      locationSubscriber.remove();
-      setLocationSubscriber(null);
-    }
+    locationSubscriber?.remove();
+    setLocationSubscriber(null);
   };
 
   useFocusEffect(
     useCallback(() => {
-      let isMounted = true;
-
-      const setupLocation = async (): Promise<void> => {
-        const permissionGranted = await requestLocationPermission();
-        if (permissionGranted && isMounted) {
-          await startLocationUpdates(permissionGranted);
-        }
+      let mounted = true;
+      const setup = async () => {
+        const granted = await requestLocationPermission();
+        if (granted && mounted) await startLocationUpdates(granted);
       };
-
-      setupLocation();
-
-      return () => {
-        isMounted = false;
-        stopLocationUpdates();
-      };
+      setup();
+      return () => { mounted = false; stopLocationUpdates(); };
     }, [])
   );
 
@@ -262,45 +224,14 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
     setIsLoading(true);
     const jakartaTime = moment().tz('Asia/Jakarta').format('YYYY-MM-DD HH:mm:ss');
 
-    if (!currentPosition || !currentPosition.latitude || !currentPosition.longitude) {
-      setIsLoading(false);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Latitude dan Longitude tidak valid!',
-      });
-      return;
-    }
-
-    if (!nameStore.trim()) {
-      setIsLoading(false);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Nama toko harus diisi!',
-      });
-      return;
-    }
-
-    if (!purpose) {
-      setIsLoading(false);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Tujuan kunjungan harus dipilih!',
-      });
-      return;
-    }
-
-    if (!userDetails?.id) {
-      setIsLoading(false);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'User ID tidak ditemukan!',
-      });
-      return;
-    }
+    if (!currentPosition?.latitude || !currentPosition?.longitude)
+      return (setIsLoading(false), Toast.show({ type: 'error', text1: 'Error', text2: 'Koordinat GPS tidak valid!' }));
+    if (!nameStore.trim())
+      return (setIsLoading(false), Toast.show({ type: 'error', text1: 'Error', text2: 'Nama toko harus diisi!' }));
+    if (!purpose)
+      return (setIsLoading(false), Toast.show({ type: 'error', text1: 'Error', text2: 'Tujuan kunjungan harus dipilih!' }));
+    if (!userDetails?.id)
+      return (setIsLoading(false), Toast.show({ type: 'error', text1: 'Error', text2: 'User ID tidak ditemukan!' }));
 
     try {
       const formBody = new URLSearchParams({
@@ -309,65 +240,32 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
         timestamp_checkin: jakartaTime,
         salesman_id: userDetails.id.toString(),
         name_store: nameStore,
-        purpose: purpose
+        purpose,
       }).toString();
-
-      console.log("Form body:", formBody);
 
       const response = await fetch("https://citrabarubusana.org/api/store-visit/check-in", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: formBody
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Authorization": `Bearer ${token}` },
+        body: formBody,
       });
 
       const responseData: CheckInResponse = await response.json();
 
       if (response.ok) {
-        // Store ID for checkout later
-        if (responseData.data && responseData.data.id) {
-          await storeDataLara("storeVisitId", responseData.data.id.toString());
-        }
-        
-        Toast.show({
-          type: 'success',
-          text1: 'Sukses',
-          text2: 'Absen Check In Toko berhasil!',
-        });
-
-        // navigation.navigate('AbsenSales');
-        navigation.navigate('Home');
+        if (responseData.data?.id) await storeDataLara("storeVisitId", responseData.data.id.toString());
+        Toast.show({ type: 'success', text1: 'Sukses', text2: 'Absen Check In Toko berhasil!' });
+        navigation.navigate('Main');
       } else {
-        console.error("Error response from server:", responseData);
-        let errorMessage = 'Absen gagal';
-        
-        if (responseData.message) {
-          errorMessage += ': ' + responseData.message;
-        }
-        
+        let msg = 'Absen gagal';
+        if (responseData.message) msg += ': ' + responseData.message;
         if (responseData.errors) {
-          const errorKeys = Object.keys(responseData.errors);
-          if (errorKeys.length > 0) {
-            const firstError = responseData.errors[errorKeys[0]];
-            errorMessage += ': ' + (Array.isArray(firstError) ? firstError[0] : firstError);
-          }
+          const first = Object.values(responseData.errors)[0];
+          msg += ': ' + (Array.isArray(first) ? first[0] : first);
         }
-        
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: errorMessage,
-        });
+        Toast.show({ type: 'error', text1: 'Error', text2: msg });
       }
-    } catch (error) {
-      console.error("Error during fetch:", error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Periksa Koneksi Internet Anda.',
-      });
+    } catch {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Periksa Koneksi Internet Anda.' });
     } finally {
       setIsLoading(false);
     }
@@ -375,99 +273,148 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
 
   if (!locationPermission) {
     return (
-      <View style={styles.loadingOverlay}>
-        <Text style={[FONTS.h3 as TextStyle, { color: COLORS.title, marginLeft: 10 }]}>
-          Izin lokasi tidak diberikan
-        </Text>
+      <View style={styles.centerScreen}>
+        <MaterialCommunityIcons name="map-marker-off" size={52} color="#ef4444" />
+        <Text style={styles.centerText}>Izin lokasi tidak diberikan</Text>
+      </View>
+    );
+  }
+  if (!currentPosition) {
+    return (
+      <View style={styles.centerScreen}>
+        <ActivityIndicator size="large" color="#1e3a8a" />
+        <Text style={styles.centerText}>Mengambil lokasi GPS...</Text>
       </View>
     );
   }
 
-  if (!currentPosition) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0000ff" />
-        <Text style={[FONTS.h3 as TextStyle, { color: COLORS.title, marginLeft: 10 }]}>
-          Loading ...
-        </Text>
-      </View>
-    );
-  }
+  const isFormValid = nameStore.trim() !== '' && purpose !== '';
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.white }}>
-        <View style={styles.container}>
-          {isLoading && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color={COLORS.white} />
-            </View>
-          )}
-          <HeaderStyle1
-            // drawer={navigation.openDrawer}
-            title={'Absen Checkin Toko'}
-            rightIcon={'chat'}
-          />
+      <SafeAreaView style={styles.safeArea}>
+        {isLoading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#ffffff" />
+          </View>
+        )}
 
-          <ScrollView>
-            <View style={styles.container}>
-              <View style={[styles.card, {
-                backgroundColor: COLORS.white,
-              }]}>
-                <View style={{ borderBottomWidth: 1, borderColor: COLORS.borderColor, paddingBottom: 8, marginBottom: 20 }}>
-                  <Text style={[FONTS.h5 as TextStyle, { color: COLORS.title }]}>Checkin Toko</Text>
-                </View>
-                <View style={{ marginBottom: 15 }}>
-                  <CustomInput
-                    value={nameStore}
-                    placeholder="Input Nama Toko"
-                    onChangeText={(value: string) => setNameStore(value)}
-                  />
-                </View>
+        <HeaderStyle1 title={'Absen Checkin Toko'} rightIcon={'chat'} />
 
-                <View style={{ marginBottom: 15 }}>
-                  <Text style={[FONTS.fontLg as TextStyle, { color: colors.text }]}>Tujuan Kunjungan</Text>
-                  <View style={styles.select}>
-                    <Picker
-                      selectedValue={purpose}
-                      onValueChange={(itemValue: string) => setPurpose(itemValue)}
-                      style={styles.picker}
-                    >
-                      <Picker.Item label="Pilih Tujuan Kunjungan" value="" />
-                      {getPickerOptions().map((option) => (
-                        <Picker.Item
-                          key={option.value}
-                          label={option.label}
-                          value={option.value}
-                        />
-                      ))}
-                    </Picker>
-                  </View>
-                </View>
-
-                {nameStore.trim() !== '' && purpose !== '' && (
-                  <View style={{ marginTop: 10, alignItems: 'center' }}>
-                    <CircleButton 
-                      icon="fingerprint" 
-                      text="Checkin" 
-                      onPress={handleAbsen}
-                    />
-                  </View>
-                )}
-
-                {/* <View style={{ marginTop: 10, alignItems: 'center' }}>
-                  <CircleButton 
-                    icon="fingerprint" 
-                    text="Checkin" 
-                    onPress={handleAbsen} 
-                    // disabled={!nameStore.trim() || !purpose}
-                  />
-                </View> */}
-
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── HERO CARD ── */}
+          <View style={styles.heroCard}>
+            <View style={styles.heroTop}>
+              <View>
+                <Text style={styles.heroLabel}>CHECK-IN TOKO</Text>
+                <Text style={styles.heroTime}>
+                  {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                </Text>
+                <Text style={styles.heroDate}>
+                  {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                </Text>
+              </View>
+              <View style={styles.heroIcon}>
+                <MaterialCommunityIcons name="store-outline" size={28} color="#ffffff" />
               </View>
             </View>
-          </ScrollView>
-        </View>
+
+            <View style={styles.heroDivider} />
+
+            <View style={styles.heroBottom}>
+              {/* Visit badge */}
+              <View style={styles.visitBadge}>
+                <Text style={styles.visitBadgeNum}>{visitCount}</Text>
+                <Text style={styles.visitBadgeText}>Kunjungan{'\n'}hari ini</Text>
+              </View>
+
+              {/* GPS pill */}
+              <View style={styles.gpsPill}>
+                <MaterialCommunityIcons name="crosshairs-gps" size={12} color="#22c55e" />
+                <Text style={styles.gpsPillText}>
+                  {currentPosition.latitude.toFixed(5)},{'\n'}{currentPosition.longitude.toFixed(5)}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* ── FORM CARD ── */}
+          <View style={styles.formCard}>
+            <View style={styles.cardHeader}>
+              <MaterialCommunityIcons name="store-edit-outline" size={18} color="#1e3a8a" />
+              <Text style={styles.cardTitle}>Detail Kunjungan</Text>
+            </View>
+
+            {/* Nama Toko */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>NAMA TOKO <Text style={styles.required}>*</Text></Text>
+              <IconInput
+                iconName="store-outline"
+                placeholder="Masukkan nama toko"
+                value={nameStore}
+                onChangeText={setNameStore}
+              />
+            </View>
+
+            {/* Tujuan Kunjungan — Picker dengan icon */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>TUJUAN KUNJUNGAN <Text style={styles.required}>*</Text></Text>
+              <View style={styles.pickerWrapper}>
+                <View style={styles.pickerIconBox}>
+                  <MaterialCommunityIcons name="tag-outline" size={18} color="#94a3b8" />
+                </View>
+                <View style={styles.pickerDivider} />
+                <Picker
+                  selectedValue={purpose}
+                  onValueChange={(val: string) => setPurpose(val)}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Pilih tujuan kunjungan..." value="" color="#cbd5e1" />
+                  {getPickerOptions().map((opt) => (
+                    <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
+                  ))}
+                </Picker>
+              </View>
+            </View>
+
+            {/* User info */}
+            {userDetails && (
+              <View style={styles.userInfoRow}>
+                <MaterialCommunityIcons name="account-circle-outline" size={15} color="#64748b" />
+                <Text style={styles.userInfoText}>{userDetails.name}</Text>
+                {userDetails.position && (
+                  <View style={styles.positionChip}>
+                    <Text style={styles.positionChipText}>{userDetails.position.name}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* ── FINGERPRINT ── */}
+          {isFormValid ? (
+            <View style={styles.fingerprintSection}>
+              <TouchableOpacity style={styles.fingerprintBtn} onPress={handleAbsen} activeOpacity={0.8}>
+                <View style={styles.fingerprintRing}>
+                  <View style={styles.fingerprintInner}>
+                    <MaterialCommunityIcons name="fingerprint" size={48} color="#1e3a8a" />
+                  </View>
+                </View>
+                <Text style={styles.fingerprintLabel}>Check In Sekarang</Text>
+                <Text style={styles.fingerprintSub}>Tap untuk konfirmasi kehadiran</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.incompleteHint}>
+              <MaterialCommunityIcons name="information-outline" size={15} color="#cbd5e1" />
+              <Text style={styles.incompleteHintText}>Lengkapi nama toko dan tujuan kunjungan</Text>
+            </View>
+          )}
+        </ScrollView>
         <Toast />
       </SafeAreaView>
     </SafeAreaProvider>
@@ -475,77 +422,89 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    // marginTop: -50,
-    backgroundColor: COLORS.background2
-  } as ViewStyle,
-  card: {
-    padding: 25,
-    borderRadius: SIZES.radius,
-    marginBottom: 15,
-    shadowColor: "rgba(0,0,0,.6)",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.30,
-    shadowRadius: 4.65,
-    elevation: 8,
-  } as ViewStyle,
-  inputStyle: {
-    ...FONTS.fontLg,
-    height: 50,
-    paddingLeft: 60,
-    borderWidth: 1,
-    borderRadius: SIZES.radius,
-  } as TextStyle,
-  inputIcon: {
-    backgroundColor: COLORS.yellow,
-    height: 40,
-    width: 40,
-    borderRadius: 10,
-    position: 'absolute',
-    left: 5,
-    top: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  } as ViewStyle,
-  eyeIcon: {
-    position: 'absolute',
-    height: 50,
-    width: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    right: 0,
-    zIndex: 1,
-    top: 0,
-  } as ViewStyle,
+  safeArea: { flex: 1, backgroundColor: '#f8fafc' } as ViewStyle,
+  scrollContent: { padding: 16, paddingBottom: 48, gap: 14 } as ViewStyle,
+  centerScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc', gap: 12 } as ViewStyle,
+  centerText: { fontSize: 14, color: '#64748b', fontWeight: '500' } as TextStyle,
   loadingOverlay: {
-    position: 'absolute',
-    zIndex: 1,
-    height: '100%',
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    position: 'absolute', zIndex: 10, height: '100%', width: '100%',
+    alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.35)',
   } as ViewStyle,
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+
+  /* Hero */
+  heroCard: { backgroundColor: '#1e3a8a', borderRadius: 22, padding: 22 } as ViewStyle,
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 } as ViewStyle,
+  heroLabel: { fontSize: 10, fontWeight: '800', color: 'rgba(255,255,255,0.55)', letterSpacing: 1.5, marginBottom: 4 } as TextStyle,
+  heroTime: { fontSize: 40, fontWeight: '800', color: '#ffffff', letterSpacing: -1 } as TextStyle,
+  heroDate: { fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 3, fontWeight: '500' } as TextStyle,
+  heroIcon: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',
   } as ViewStyle,
-  select: {
-    borderColor: '#ddd',
-    borderWidth: 1,
-    borderRadius: 4,
-    marginTop: 8,
-    height: 55,
+  heroDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginBottom: 16 } as ViewStyle,
+  heroBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' } as ViewStyle,
+  visitBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
   } as ViewStyle,
-  picker: {
-    height: 60,
-    width: '100%',
+  visitBadgeNum: { fontSize: 28, fontWeight: '800', color: '#ffffff' } as TextStyle,
+  visitBadgeText: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '600', lineHeight: 16 } as TextStyle,
+  gpsPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8,
   } as ViewStyle,
+  gpsPillText: { fontSize: 10, color: 'rgba(255,255,255,0.75)', fontFamily: 'monospace', lineHeight: 15 } as TextStyle,
+
+  /* Form card */
+  formCard: {
+    backgroundColor: '#ffffff', borderRadius: 20, padding: 20,
+    borderWidth: 1, borderColor: '#e2e8f0',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3,
+  } as ViewStyle,
+  cardHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderBottomWidth: 1, borderColor: '#f1f5f9', paddingBottom: 14, marginBottom: 18,
+  } as ViewStyle,
+  cardTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' } as TextStyle,
+
+  fieldGroup: { marginBottom: 14 } as ViewStyle,
+  fieldLabel: { fontSize: 10, fontWeight: '800', color: '#94a3b8', letterSpacing: 1, marginBottom: 7 } as TextStyle,
+  required: { color: '#ef4444', fontWeight: '800' } as TextStyle,
+
+  /* Picker — sama struktur dengan IconInput */
+  pickerWrapper: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12,
+    backgroundColor: '#ffffff', overflow: 'hidden',
+  } as ViewStyle,
+  pickerIconBox: { width: 46, alignItems: 'center', justifyContent: 'center', paddingVertical: 14 } as ViewStyle,
+  pickerDivider: { width: 1, height: 30, backgroundColor: '#f1f5f9' } as ViewStyle,
+  picker: { flex: 1, height: 52 } as ViewStyle,
+
+  /* User info */
+  userInfoRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#f8fafc', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginTop: 4,
+  } as ViewStyle,
+  userInfoText: { fontSize: 13, color: '#475569', fontWeight: '600', flex: 1 } as TextStyle,
+  positionChip: { backgroundColor: '#dbeafe', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 } as ViewStyle,
+  positionChipText: { fontSize: 10, fontWeight: '700', color: '#1e3a8a' } as TextStyle,
+
+  /* Fingerprint */
+  fingerprintSection: { alignItems: 'center', paddingVertical: 8 } as ViewStyle,
+  fingerprintBtn: { alignItems: 'center' } as ViewStyle,
+  fingerprintRing: {
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: '#eff6ff', borderWidth: 2, borderColor: '#bfdbfe',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#1e3a8a', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 14, elevation: 6,
+  } as ViewStyle,
+  fingerprintInner: { width: 96, height: 96, borderRadius: 48, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center' } as ViewStyle,
+  fingerprintLabel: { marginTop: 14, fontSize: 14, fontWeight: '800', color: '#1e3a8a' } as TextStyle,
+  fingerprintSub: { fontSize: 11, color: '#94a3b8', marginTop: 4, fontWeight: '500' } as TextStyle,
+
+  incompleteHint: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: 8 } as ViewStyle,
+  incompleteHintText: { fontSize: 12, color: '#94a3b8', fontWeight: '500' } as TextStyle,
 });
 
 export default Checkin;
