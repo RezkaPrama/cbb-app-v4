@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+// import { Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons'; // ganti Feather → Ionicons
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
 interface CustomNavigationProps extends BottomTabBarProps { }
@@ -11,18 +12,33 @@ const CustomNavigation: React.FC<CustomNavigationProps> = ({
     navigation
 }) => {
 
-    const getIconName = (routeName: string): keyof typeof Feather.glyphMap => {
+    // const getIconName = (routeName: string): keyof typeof Feather.glyphMap => {
+    //     switch (routeName) {
+    //         case 'HomeTab':
+    //             return 'home';        // Ganti dengan: 'grid', 'layout', 'trello'
+    //         case 'AbsenMasuk':
+    //             return 'clock';  // Ganti dengan: 'clock', 'check-circle', 'calendar'
+    //         case 'ScanRack':
+    //             return 'camera';      // Ganti dengan: 'aperture', 'scan', 'maximize'
+    //         case 'Profile':
+    //             return 'user';        // Ganti dengan: 'settings', 'menu', 'more-horizontal'
+    //         default:
+    //             return 'circle';
+    //     }
+    // };
+
+    const getIconName = (routeName: string, isFocused: boolean): keyof typeof Ionicons.glyphMap => {
         switch (routeName) {
             case 'HomeTab':
-                return 'home';        // Ganti dengan: 'grid', 'layout', 'trello'
+                return isFocused ? 'home' : 'home-outline';
             case 'AbsenMasuk':
-                return 'clock';  // Ganti dengan: 'clock', 'check-circle', 'calendar'
-            case 'ScanRack':
-                return 'camera';      // Ganti dengan: 'aperture', 'scan', 'maximize'
+                return isFocused ? 'finger-print' : 'finger-print-outline';
+            case 'ShelfScanner':
+                return isFocused ? 'qr-code' : 'qr-code-outline';
             case 'Profile':
-                return 'user';        // Ganti dengan: 'settings', 'menu', 'more-horizontal'
+                return isFocused ? 'person' : 'person-outline';
             default:
-                return 'circle';
+                return 'ellipse-outline';
         }
     };
 
@@ -52,7 +68,8 @@ const CustomNavigation: React.FC<CustomNavigationProps> = ({
                         });
                     };
 
-                    const iconName = getIconName(route.name);
+                    // const iconName = getIconName(route.name);
+                    const iconName = getIconName(route.name, isFocused);
 
                     return (
                         <TouchableOpacity
@@ -68,7 +85,12 @@ const CustomNavigation: React.FC<CustomNavigationProps> = ({
                                 styles.iconContainer,
                                 isFocused && styles.iconContainerActive
                             ]}>
-                                <Feather
+                                {/* <Feather
+                                    name={iconName}
+                                    size={24}
+                                    color={isFocused ? '#fff' : '#999'}
+                                /> */}
+                                <Ionicons  // ganti Feather → Ionicons
                                     name={iconName}
                                     size={24}
                                     color={isFocused ? '#fff' : '#999'}

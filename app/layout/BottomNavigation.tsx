@@ -4,6 +4,7 @@ import HomeScreen from '../screens/Home/Home';
 import CustomNavigation from './CustomNavigation';
 import AbsenSales from '../screens/Absen/AbsenSales';
 import ScanRack from '../screens/Scan/ScanRack';
+import ShelfScanner from '../screens/Scan/ShelfScanner';
 // Import screens lain yang Anda punya
 // import AbsenMasukScreen from '../screens/Absensi/AbsenMasuk';
 // import ScanRackScreen from '../screens/Scan/ScanRack';
@@ -14,6 +15,7 @@ export type BottomTabParamList = {
   HomeTab: undefined;
   AbsenMasuk?: undefined;
   ScanRack?: undefined;
+  ShelfScanner?: undefined;
   Profile?: undefined;
 };
 
@@ -34,13 +36,14 @@ const BottomNavigation: React.FC = () => {
       />
       {/* Uncomment jika sudah ada screen-nya */}
       <Tab.Screen 
+        name="ShelfScanner"
+        component={ShelfScanner}
+      />
+
+      <Tab.Screen 
         name="AbsenMasuk"
         component={AbsenSales}
-      />
-      <Tab.Screen 
-        name="ScanRack"
-        component={ScanRack}
-      />
+      />      
       {/* <Tab.Screen 
         name="Profile"
         component={ProfileScreen}
