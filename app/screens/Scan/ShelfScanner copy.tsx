@@ -5,7 +5,7 @@ import {
     TouchableOpacity,
     StyleSheet,
     Animated,
-    Alert,
+    Modal,
     StatusBar,
     ActivityIndicator,
     Easing,
@@ -15,6 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
+import { getDataLara } from '../../utils/asyncStorage';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,28 @@ const ShelfScannerScreen: React.FC<ShelfScannerScreenProps> = ({ navigation }) =
     const [flashOn, setFlashOn] = useState(false);
     const insets = useSafeAreaInsets();
 
+    // ── Modal state ───────────────────────────────────────────────────────────
+    const [scannedData, setScannedData] = useState<string | null>(null);
+    const [modalVisible, setModalVisible] = useState(false);
+    const modalOpacity = useRef(new Animated.Value(0)).current;
+    const modalScale = useRef(new Animated.Value(0.9)).current;
+
+    // ── Token ─────────────────────────────────────────────────────────────────
+    const [token, setToken] = useState<string | null>(null); // ✅ Pindah ke sini
+
+    // ── Effect: fetch token ───────────────────────────────────────────────────
+    useEffect(() => {                                          // ✅ Pindah ke sini
+        const fetchData = async (): Promise<void> => {
+            try {
+                const storedToken = await getDataLara<string>("tokenUser");
+                if (storedToken) setToken(storedToken);
+            } catch (error) {
+                console.error('Error fetching token:', error);
+            }
+        };
+        fetchData();
+    }, []);
+
     // Laser line animation
     const laserAnim = useRef(new Animated.Value(0)).current;
     // Fade-in for overlay
@@ -133,6 +156,44 @@ const ShelfScannerScreen: React.FC<ShelfScannerScreenProps> = ({ navigation }) =
         laserLoop.start();
         return () => laserLoop.stop();
     }, []);
+
+    // ── Modal helpers ─────────────────────────────────────────────────────────
+    const openModal = () => {
+        setModalVisible(true);
+        modalOpacity.setValue(0);
+        modalScale.setValue(0.88);
+        Animated.parallel([
+            Animated.timing(modalOpacity, {
+                toValue: 1,
+                duration: 280,
+                useNativeDriver: true,
+            }),
+            Animated.spring(modalScale, {
+                toValue: 1,
+                friction: 7,
+                tension: 120,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    };
+
+    const closeModal = (callback?: () => void) => {
+        Animated.parallel([
+            Animated.timing(modalOpacity, {
+                toValue: 0,
+                duration: 180,
+                useNativeDriver: true,
+            }),
+            Animated.timing(modalScale, {
+                toValue: 0.9,
+                duration: 180,
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
+            setModalVisible(false);
+            callback?.();
+        });
+    };
 
     // ── Permission: loading ───────────────────────────────────────────────────
     if (!permission) {
@@ -182,36 +243,64 @@ const ShelfScannerScreen: React.FC<ShelfScannerScreenProps> = ({ navigation }) =
     }
 
     // ── Handle scan success ───────────────────────────────────────────────────
+    
     const handleBarcodeScanned = ({ type, data }: { type: string; data: string }) => {
         if (scanned) return;
         setScanned(true);
         setScanMode('processing');
 
-        // Simulasi 800ms processing feedback sebelum Alert
-        setTimeout(() => {
-            Alert.alert(
-                '🟢 Rak Ditemukan!',
-                `Serial Number: ${data}\n\nApakah Anda ingin mengisi laporan kondisi rak ini?`,
-                [
-                    {
-                        text: 'Batal',
-                        style: 'cancel',
-                        onPress: () => {
-                            setScanned(false);
-                            setScanMode('scan');
-                        },
-                    },
-                    {
-                        text: 'Isi Laporan',
-                        onPress: () => {
-                            setScanned(false);
-                            setScanMode('scan');
-                            navigation.navigate('ShelfForm', { scannedSerial: data });
-                        },
-                    },
-                ]
-            );
-        }, 800);
+        const resolveSerial = async (raw: string): Promise<string> => {
+            try {
+                const url = new URL(raw);
+                const segments = url.pathname.split('/').filter(Boolean);
+                const lastSegment = segments[segments.length - 1] ?? raw;
+
+                // ── Versi BARU: citrabarubusana.org/.../SERIAL
+                if (url.hostname === 'citrabarubusana.org') {
+                    return lastSegment; // langsung serial number
+                }
+
+                // ── Versi LAMA: app.citrabarubusana.com/.../ID
+                if (url.hostname === 'app.citrabarubusana.com') {
+                    const response = await fetch(
+                        `https://citrabarubusana.org/api/rack/resolve-id/${lastSegment}`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${token}`, // token JWT user
+                                'Accept': 'application/json',
+                            },
+                        }
+                    );
+
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                    const json = await response.json();
+
+                    if (json.success && json.data?.serial_number) {
+                        return json.data.serial_number;
+                    }
+
+                    throw new Error('Serial number tidak ditemukan di response');
+                }
+
+                return lastSegment; // fallback hostname lain
+            } catch (err) {
+                console.warn('[resolveSerial] error:', err);
+                return raw; // fallback ke raw data jika semua gagal
+            }
+        };
+
+        resolveSerial(data)
+            .then((serial) => {
+                setScannedData(serial);
+                setScanMode('scan');
+                openModal();
+            })
+            .catch(() => {
+                setScannedData(data);
+                setScanMode('scan');
+                openModal();
+            });
     };
 
     // ── Laser translateY (0 → WINDOW_SIZE) ────────────────────────────────────
@@ -348,6 +437,63 @@ const ShelfScannerScreen: React.FC<ShelfScannerScreenProps> = ({ navigation }) =
                     </Text>
                 </View>
             </Animated.View>
+
+            {/* ── Custom Modal: Rak Ditemukan ───────────────────────────── */}
+            <Modal visible={modalVisible} transparent animationType="none">
+                <Animated.View style={[styles.modalOverlay, { opacity: modalOpacity }]}>
+                    <Animated.View
+                        style={[styles.modalCard, { transform: [{ scale: modalScale }] }]}
+                    >
+                        {/* Icon */}
+                        <View style={styles.modalIconWrap}>
+                            <FeatherIcon name="check-circle" size={28} color="#00e5ff" />
+                        </View>
+
+                        {/* Title */}
+                        <Text style={styles.modalTitle}>Rak Ditemukan!</Text>
+
+                        {/* Serial chip */}
+                        <View style={styles.serialChip}>
+                            <FeatherIcon name="tag" size={11} color="#00e5ff" />
+                            <Text style={styles.serialChipText}>{scannedData}</Text>
+                        </View>
+
+                        {/* Subtitle */}
+                        <Text style={styles.modalSubtitle}>
+                            Apakah Anda ingin mengisi laporan kondisi rak ini?
+                        </Text>
+
+                        {/* Buttons */}
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity
+                                onPress={() =>
+                                    closeModal(() => {
+                                        setScanned(false);
+                                    })
+                                }
+                                activeOpacity={0.8}
+                                style={[styles.modalBtn, styles.modalBtnCancel]}
+                            >
+                                <Text style={styles.modalBtnCancelText}>Batal</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                onPress={() =>
+                                    closeModal(() => {
+                                        setScanned(false);
+                                        navigation.navigate('ShelfForm', { scannedSerial: scannedData! });
+                                    })
+                                }
+                                activeOpacity={0.85}
+                                style={[styles.modalBtn, styles.modalBtnPrimary]}
+                            >
+                                <FeatherIcon name="file-text" size={13} color="#fff" style={{ marginRight: 6 }} />
+                                <Text style={styles.modalBtnPrimaryText}>Isi Laporan</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </Animated.View>
+                </Animated.View>
+            </Modal>
         </View>
     );
 };
@@ -420,7 +566,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 28,
         borderRadius: 14,
         marginBottom: 14,
-        // shadow
         shadowColor: BLUE,
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.4,
@@ -521,7 +666,6 @@ const styles = StyleSheet.create({
         height: 2,
         borderRadius: 2,
         backgroundColor: '#ff1744',
-        // Glow effect via shadow (iOS)
         shadowColor: '#ff1744',
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.9,
@@ -575,7 +719,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
         gap: 14,
     },
-
     rescanBtn: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -594,7 +737,6 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '700',
     },
-
     modePills: {
         flexDirection: 'row',
         backgroundColor: 'rgba(255,255,255,0.06)',
@@ -624,12 +766,116 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: '600',
     },
-
     bottomNote: {
         color: '#4a5c80',
         fontSize: 10,
         fontWeight: '600',
         textAlign: 'center',
+    },
+
+    // ── Modal ─────────────────────────────────────────────────────────────────
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(7, 11, 25, 0.80)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 32,
+    },
+    modalCard: {
+        backgroundColor: '#0f172a',
+        borderRadius: 28,
+        padding: 28,
+        width: '100%',
+        maxWidth: 320,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#1e293b',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+        elevation: 20,
+    },
+    modalIconWrap: {
+        width: 68,
+        height: 68,
+        borderRadius: 34,
+        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.22)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 14,
+    },
+    modalTitle: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#fff',
+        textAlign: 'center',
+        letterSpacing: 0.3,
+        marginBottom: 10,
+    },
+    serialChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        borderWidth: 0.5,
+        borderColor: 'rgba(0, 229, 255, 0.3)',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        marginBottom: 12,
+    },
+    serialChipText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: CYAN,
+        letterSpacing: 0.5,
+    },
+    modalSubtitle: {
+        fontSize: 12,
+        color: '#94a3b8',
+        textAlign: 'center',
+        lineHeight: 18,
+        marginBottom: 4,
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 20,
+        width: '100%',
+    },
+    modalBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 13,
+        borderRadius: 12,
+    },
+    modalBtnCancel: {
+        backgroundColor: '#1e293b',
+        borderWidth: 1,
+        borderColor: '#334155',
+    },
+    modalBtnCancelText: {
+        color: '#94a3b8',
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    modalBtnPrimary: {
+        backgroundColor: BLUE,
+        shadowColor: BLUE,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    modalBtnPrimaryText: {
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: '700',
     },
 });
 

@@ -39,7 +39,16 @@ const BASE_URL = 'https://citrabarubusana.org';
 // lalu tipe navigation & route otomatis cocok
 
 type ShelfFormNavigationProp = StackNavigationProp<RootStackParamList, 'ShelfForm'>;
-type ShelfFormRouteProp = RouteProp<RootStackParamList, 'ShelfForm'>;
+type ShelfFormRouteProp = RouteProp<RootStackParamList, 'ShelfForm'> & {
+    params: RouteProp<RootStackParamList, 'ShelfForm'>['params'] & {
+        rackData?: {
+            type_rack?: TypeRak;
+            size_rack?: SizeRak;
+            brand_rack?: BrandRak;
+            quota?: number;
+        };
+    };
+};
 
 interface ShelfFormScreenProps {
     navigation: ShelfFormNavigationProp;
@@ -92,6 +101,38 @@ const FIXING_OPTIONS: FixingOption[] = [
     { value: 'Tidak Perlu Perbaikan', label: 'Tidak Perlu Perbaikan', emoji: '⛔', color: '#64748b', bgColor: '#f1f5f9', borderColor: '#cbd5e1' },
 ];
 
+// ── Rack attribute option types ─────────────────────────────────────────────
+type TypeRak = 'Batang' | 'Wagon' | 'Tower' | 'Backwall' | '';
+type SizeRak = 'Besar' | 'Kecil' | '';
+type BrandRak = 'Nayla' | 'My Foot' | 'Parker' | 'Walton' | 'Stairway' | 'Salma' | '';
+
+interface SimpleOption<T extends string> {
+    value: T;
+    label: string;
+    emoji: string;
+}
+
+const TYPE_RACK_OPTIONS: SimpleOption<TypeRak>[] = [
+    { value: 'Batang', label: 'Batang', emoji: '📏' },
+    { value: 'Wagon', label: 'Wagon', emoji: '🛒' },
+    { value: 'Tower', label: 'Tower', emoji: '🗼' },
+    { value: 'Backwall', label: 'Backwall', emoji: '🧱' },
+];
+
+const SIZE_RACK_OPTIONS: SimpleOption<SizeRak>[] = [
+    { value: 'Besar', label: 'Besar', emoji: '🔲' },
+    { value: 'Kecil', label: 'Kecil', emoji: '▪️' },
+];
+
+const BRAND_RACK_OPTIONS: SimpleOption<BrandRak>[] = [
+    { value: 'Nayla', label: 'Nayla', emoji: '🏷️' },
+    { value: 'My Foot', label: 'My Foot', emoji: '🏷️' },
+    { value: 'Parker', label: 'Parker', emoji: '🏷️' },
+    { value: 'Walton', label: 'Walton', emoji: '🏷️' },
+    { value: 'Stairway', label: 'Stairway', emoji: '🏷️' },
+    { value: 'Salma', label: 'Salma', emoji: '🏷️' },
+];
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 const SpinnerIcon: React.FC<{ size?: number; color?: string }> = ({
@@ -127,7 +168,7 @@ const SuccessIcon: React.FC = () => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const ShelfFormScreen: React.FC<ShelfFormScreenProps> = ({ navigation, route }) => {
-    const { scannedSerial, scannedStore, manualMode } = route.params ?? {};
+    const { scannedSerial, scannedStore, manualMode, rackData } = route.params ?? {};
     const insets = useSafeAreaInsets();
 
     // ── Form state ────────────────────────────────────────────────────────────
@@ -136,6 +177,19 @@ const ShelfFormScreen: React.FC<ShelfFormScreenProps> = ({ navigation, route }) 
     const [namaToko, setNamaToko] = useState(scannedStore?.namaToko ?? '');
     const [status, setStatus] = useState<StatusRak>('');
     const [fixing, setFixing] = useState<FixingRak>('');
+    const [catatanPerbaikan, setCatatanPerbaikan] = useState('');
+
+    // ── Rack attribute states ─────────────────────────────────────────────────
+    const [typeRack, setTypeRack] = useState<TypeRak>((rackData?.type_rack ?? '') as TypeRak);
+    const [sizeRack, setSizeRack] = useState<SizeRak>((rackData?.size_rack ?? '') as SizeRak);
+    const [brandRack, setBrandRack] = useState<BrandRak>((rackData?.brand_rack ?? '') as BrandRak);
+    const [quota, setQuota] = useState(rackData?.quota != null ? String(rackData.quota) : '');
+
+    // Picker visibility
+    const [typePickerVisible, setTypePickerVisible] = useState(false);
+    const [sizePickerVisible, setSizePickerVisible] = useState(false);
+    const [brandPickerVisible, setBrandPickerVisible] = useState(false);
+
     const [serialNumber, setSerialNumber] = useState(scannedSerial ?? '');
     const [fotoUri, setFotoUri] = useState<string | null>(null);
     const [latitude, setLatitude] = useState('');
@@ -347,9 +401,9 @@ const ShelfFormScreen: React.FC<ShelfFormScreenProps> = ({ navigation, route }) 
         }
         const result = await ImagePicker.launchCameraAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [4, 3],
             quality: 0.8,
+            // ✅ Hapus: allowsEditing: true,
+            // ✅ Hapus: aspect: [4, 3],
         });
         if (!result.canceled) {
             setFotoUri(result.assets[0].uri);
@@ -364,8 +418,34 @@ const ShelfFormScreen: React.FC<ShelfFormScreenProps> = ({ navigation, route }) 
         if (!status) {
             Alert.alert('Peringatan', 'Kondisi rak wajib dipilih.'); return;
         }
+
+        if (!selectedCustomer) {
+            Alert.alert('Peringatan', 'Pelanggan wajib dipilih.'); return;
+        }
+        if (!namaToko.trim()) {
+            Alert.alert('Peringatan', 'Nama toko wajib diisi.'); return;
+        }
+        
+        // ✅ Tambahan validasi baru
+        if (!typeRack) {
+            Alert.alert('Peringatan', 'Tipe rak wajib dipilih.'); return;
+        }
+        if (!sizeRack) {
+            Alert.alert('Peringatan', 'Ukuran rak wajib dipilih.'); return;
+        }
+        if (!brandRack) {
+            Alert.alert('Peringatan', 'Brand rak wajib dipilih.'); return;
+        }
+        if (!fotoUri) {
+            Alert.alert('Peringatan', 'Foto rak wajib diambil sebagai dokumentasi.'); return;
+        }
         if (!latitude || !longitude) {
             Alert.alert('Peringatan', 'Koordinat GPS wajib diisi. Klik tombol Deteksi GPS.'); return;
+        }
+
+        if (status === 'Butuh Perbaikan' && !catatanPerbaikan.trim()) {
+            Alert.alert('Peringatan', 'Catatan perbaikan wajib diisi jika kondisi rak "Butuh Perbaikan".');
+            return;
         }
 
         openModal('scanning');
@@ -379,6 +459,12 @@ const ShelfFormScreen: React.FC<ShelfFormScreenProps> = ({ navigation, route }) 
             formData.append('latitude', latitude);
             formData.append('longitude', longitude);
             formData.append('status', status);
+
+            if (catatanPerbaikan.trim()) formData.append('catatan_perbaikan', catatanPerbaikan.trim());
+            if (typeRack) formData.append('type_rack', typeRack);
+            if (sizeRack) formData.append('size_rack', sizeRack);
+            if (brandRack) formData.append('brand_rack', brandRack);
+            if (quota) formData.append('quota', quota);
 
             if (namaToko) formData.append('store', namaToko);
             if (selectedCustomer) {
@@ -606,6 +692,70 @@ const ShelfFormScreen: React.FC<ShelfFormScreenProps> = ({ navigation, route }) 
                         />
                     </View>
 
+                    {/* ── Row: Type Rack + Size Rack ────────────────────────── */}
+                    <View style={styles.rowFields}>
+                        <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
+                            <Text style={styles.fieldLabel}>Tipe Rak <Text style={styles.required}>*</Text></Text>
+                            <TouchableOpacity
+                                onPress={() => setTypePickerVisible(true)}
+                                activeOpacity={0.8}
+                                style={styles.pickerBtn}
+                            >
+                                <Text style={[styles.pickerBtnText, typeRack ? { color: '#1e293b' } : {}]} numberOfLines={1}>
+                                    {typeRack
+                                        ? `${TYPE_RACK_OPTIONS.find(o => o.value === typeRack)?.emoji} ${typeRack}`
+                                        : 'Pilih Tipe...'}
+                                </Text>
+                                <FeatherIcon name="chevron-down" size={14} color="#94a3b8" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
+                            <Text style={styles.fieldLabel}>Ukuran Rak <Text style={styles.required}>*</Text></Text>
+                            <TouchableOpacity
+                                onPress={() => setSizePickerVisible(true)}
+                                activeOpacity={0.8}
+                                style={styles.pickerBtn}
+                            >
+                                <Text style={[styles.pickerBtnText, sizeRack ? { color: '#1e293b' } : {}]} numberOfLines={1}>
+                                    {sizeRack
+                                        ? `${SIZE_RACK_OPTIONS.find(o => o.value === sizeRack)?.emoji} ${sizeRack}`
+                                        : 'Pilih Ukuran...'}
+                                </Text>
+                                <FeatherIcon name="chevron-down" size={14} color="#94a3b8" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* ── Row: Brand + Quota ────────────────────────────────── */}
+                    <View style={styles.rowFields}>
+                        <View style={[styles.fieldGroup, { flex: 1.4, marginRight: 8 }]}>
+                            <Text style={styles.fieldLabel}>Brand Rak <Text style={styles.required}>*</Text></Text>
+                            <TouchableOpacity
+                                onPress={() => setBrandPickerVisible(true)}
+                                activeOpacity={0.8}
+                                style={styles.pickerBtn}
+                            >
+                                <Text style={[styles.pickerBtnText, brandRack ? { color: '#1e293b' } : {}]} numberOfLines={1}>
+                                    {brandRack ? `🏷️ ${brandRack}` : 'Pilih Brand...'}
+                                </Text>
+                                <FeatherIcon name="chevron-down" size={14} color="#94a3b8" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
+                            <Text style={styles.fieldLabel}>Jumlah Rak di Toko</Text>
+                            <TextInput
+                                style={[styles.input, styles.monoInput]}
+                                placeholder="0"
+                                placeholderTextColor="#94a3b8"
+                                value={quota}
+                                onChangeText={text => setQuota(text.replace(/[^0-9]/g, ''))}
+                                keyboardType="numeric"
+                            />
+                        </View>
+                    </View>
+
                     {/* ── Row: Status + Fixing ───────────────────────── */}
                     <View style={styles.rowFields}>
                         <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
@@ -638,38 +788,109 @@ const ShelfFormScreen: React.FC<ShelfFormScreenProps> = ({ navigation, route }) 
                             </TouchableOpacity>
                         </View>
 
-                        <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
-                            <Text style={styles.fieldLabel}>Keterangan Fixing</Text>
-                            <TouchableOpacity
-                                onPress={() => setFixingPickerVisible(true)}
-                                activeOpacity={0.8}
-                                style={[
-                                    styles.pickerBtn,
-                                    selectedFixing && {
-                                        borderColor: selectedFixing.borderColor,
-                                        backgroundColor: selectedFixing.bgColor,
-                                    },
-                                ]}
-                            >
-                                <Text
-                                    style={[
-                                        styles.pickerBtnText,
-                                        selectedFixing && { color: selectedFixing.color, fontWeight: '700' },
-                                    ]}
-                                    numberOfLines={1}
-                                >
-                                    {selectedFixing
-                                        ? `${selectedFixing.emoji} ${selectedFixing.label}`
-                                        : 'Pilih Fixing...'}
-                                </Text>
-                                <FeatherIcon name="chevron-down" size={14} color={selectedFixing?.color ?? '#94a3b8'} />
-                            </TouchableOpacity>
-                        </View>
+
                     </View>
+
+                    {/* ── Catatan Perbaikan — muncul hanya jika Butuh Perbaikan ── */}
+                    {status === 'Butuh Perbaikan' && (
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.fieldLabel}>
+                                Catatan Perbaikan <Text style={styles.required}>*</Text>
+                            </Text>
+                            <View style={styles.catatanWrap}>
+                                <FeatherIcon
+                                    name="alert-octagon"
+                                    size={14}
+                                    color="#dc2626"
+                                    style={{ marginTop: 2 }}
+                                />
+                                <TextInput
+                                    style={styles.catatanInput}
+                                    placeholder="Jelaskan kerusakan yang perlu diperbaiki..."
+                                    placeholderTextColor="#fca5a5"
+                                    value={catatanPerbaikan}
+                                    onChangeText={setCatatanPerbaikan}
+                                    multiline
+                                    numberOfLines={4}
+                                    textAlignVertical="top"
+                                    maxLength={500}
+                                />
+                            </View>
+                            <Text style={styles.catatanCounter}>
+                                {catatanPerbaikan.length}/500
+                            </Text>
+                        </View>
+                    )}
+
+                    {/* ── Type Rack Picker ───────────────────────────────────────── */}
+                    <Modal visible={typePickerVisible} transparent animationType="slide"
+                        onRequestClose={() => setTypePickerVisible(false)}>
+                        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1}
+                            onPress={() => setTypePickerVisible(false)}>
+                            <View style={styles.pickerSheet}>
+                                <View style={styles.pickerHandle} />
+                                <Text style={styles.pickerSheetTitle}>Pilih Tipe Rak</Text>
+                                {TYPE_RACK_OPTIONS.map(opt => (
+                                    <TouchableOpacity key={opt.value}
+                                        onPress={() => { setTypeRack(opt.value); setTypePickerVisible(false); }}
+                                        activeOpacity={0.8}
+                                        style={[styles.pickerOption, typeRack === opt.value && { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
+                                        <Text style={styles.pickerOptionEmoji}>{opt.emoji}</Text>
+                                        <Text style={[styles.pickerOptionText, { color: '#1e293b' }]}>{opt.label}</Text>
+                                        {typeRack === opt.value && <FeatherIcon name="check" size={16} color="#1952c8" style={{ marginLeft: 'auto' }} />}
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </TouchableOpacity>
+                    </Modal>
+
+                    {/* ── Size Rack Picker ───────────────────────────────────────── */}
+                    <Modal visible={sizePickerVisible} transparent animationType="slide"
+                        onRequestClose={() => setSizePickerVisible(false)}>
+                        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1}
+                            onPress={() => setSizePickerVisible(false)}>
+                            <View style={styles.pickerSheet}>
+                                <View style={styles.pickerHandle} />
+                                <Text style={styles.pickerSheetTitle}>Pilih Ukuran Rak</Text>
+                                {SIZE_RACK_OPTIONS.map(opt => (
+                                    <TouchableOpacity key={opt.value}
+                                        onPress={() => { setSizeRack(opt.value); setSizePickerVisible(false); }}
+                                        activeOpacity={0.8}
+                                        style={[styles.pickerOption, sizeRack === opt.value && { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
+                                        <Text style={styles.pickerOptionEmoji}>{opt.emoji}</Text>
+                                        <Text style={[styles.pickerOptionText, { color: '#1e293b' }]}>{opt.label}</Text>
+                                        {sizeRack === opt.value && <FeatherIcon name="check" size={16} color="#1952c8" style={{ marginLeft: 'auto' }} />}
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </TouchableOpacity>
+                    </Modal>
+
+                    {/* ── Brand Rack Picker ──────────────────────────────────────── */}
+                    <Modal visible={brandPickerVisible} transparent animationType="slide"
+                        onRequestClose={() => setBrandPickerVisible(false)}>
+                        <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1}
+                            onPress={() => setBrandPickerVisible(false)}>
+                            <View style={styles.pickerSheet}>
+                                <View style={styles.pickerHandle} />
+                                <Text style={styles.pickerSheetTitle}>Pilih Brand Rak</Text>
+                                {BRAND_RACK_OPTIONS.map(opt => (
+                                    <TouchableOpacity key={opt.value}
+                                        onPress={() => { setBrandRack(opt.value); setBrandPickerVisible(false); }}
+                                        activeOpacity={0.8}
+                                        style={[styles.pickerOption, brandRack === opt.value && { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
+                                        <Text style={styles.pickerOptionEmoji}>{opt.emoji}</Text>
+                                        <Text style={[styles.pickerOptionText, { color: '#1e293b' }]}>{opt.label}</Text>
+                                        {brandRack === opt.value && <FeatherIcon name="check" size={16} color="#1952c8" style={{ marginLeft: 'auto' }} />}
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </TouchableOpacity>
+                    </Modal>
 
                     {/* ── Foto Rak ──────────────────────────────────── */}
                     <View style={styles.fieldGroup}>
-                        <Text style={styles.fieldLabel}>Foto Rak (Dokumentasi)</Text>
+                        <Text style={styles.fieldLabel}>Foto Rak <Text style={styles.required}>*</Text></Text>
                         <TouchableOpacity
                             onPress={pickImage}
                             activeOpacity={0.85}
@@ -705,12 +926,12 @@ const ShelfFormScreen: React.FC<ShelfFormScreenProps> = ({ navigation, route }) 
                                 Latitude <Text style={styles.required}>*</Text>
                             </Text>
                             <TextInput
-                                style={[styles.input, styles.monoInput]}
-                                placeholder="Klik GPS..."
+                                style={[styles.input, styles.monoInput, styles.inputDisabled]}
+                                placeholder="Mendeteksi..."
                                 placeholderTextColor="#94a3b8"
                                 value={latitude}
                                 keyboardType="numeric"
-                                onChangeText={setLatitude}
+                                editable={false}
                             />
                         </View>
                         <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
@@ -718,12 +939,12 @@ const ShelfFormScreen: React.FC<ShelfFormScreenProps> = ({ navigation, route }) 
                                 Longitude <Text style={styles.required}>*</Text>
                             </Text>
                             <TextInput
-                                style={[styles.input, styles.monoInput]}
-                                placeholder="Klik GPS..."
+                                style={[styles.input, styles.monoInput, styles.inputDisabled]}
+                                placeholder="Mendeteksi..."
                                 placeholderTextColor="#94a3b8"
                                 value={longitude}
                                 keyboardType="numeric"
-                                onChangeText={setLongitude}
+                                editable={false}
                             />
                         </View>
                     </View>
@@ -1052,11 +1273,26 @@ const styles = StyleSheet.create({
     pickerBtnText: { fontSize: 12, color: '#94a3b8', fontWeight: '600', flex: 1 },
 
     photoPicker: {
-        height: 130, backgroundColor: '#f1f5f9',
-        borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#94a3b8',
-        borderRadius: 14, overflow: 'hidden', justifyContent: 'center', alignItems: 'center',
+        backgroundColor: '#f1f5f9',
+        borderWidth: 1.5,
+        borderStyle: 'dashed',
+        borderColor: '#94a3b8',
+        borderRadius: 14,
+        overflow: 'hidden',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: 130,  // ✅ ganti height → minHeight agar bisa expand
     },
-    photoPickerFilled: { borderStyle: 'solid', borderColor: '#cbd5e1' },
+    photoPickerFilled: {
+        borderStyle: 'solid',
+        borderColor: '#cbd5e1',
+    },
+    photoPreview: {
+        width: '100%',
+        aspectRatio: 4 / 3,   // ✅ ganti height:'100%' → aspectRatio mengikuti lebar
+        resizeMode: 'contain', // ✅ ganti 'cover' → 'contain' agar tidak crop
+    },
+
     photoPickerInner: { alignItems: 'center', gap: 6 },
     cameraIconCircle: {
         width: 48, height: 48, borderRadius: 24,
@@ -1065,7 +1301,6 @@ const styles = StyleSheet.create({
     },
     photoPickerText: { fontSize: 13, fontWeight: '700', color: '#334155' },
     photoPickerSub: { fontSize: 11, color: '#94a3b8' },
-    photoPreview: { width: '100%', height: '100%', resizeMode: 'cover' },
     removePhotoBtn: {
         position: 'absolute', top: 8, right: 8,
         backgroundColor: '#ef4444', width: 28, height: 28,
@@ -1179,6 +1414,36 @@ const styles = StyleSheet.create({
     gpsBtnDisabled: {
         opacity: 0.6,
         backgroundColor: '#64748b',  // abu-abu saat disabled
+    },
+    inputDisabled: {
+        backgroundColor: '#f1f5f9',
+        color: '#64748b',
+        borderColor: '#e2e8f0',
+    },
+    catatanWrap: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 10,
+        backgroundColor: '#fff1f2',
+        borderWidth: 1.5,
+        borderColor: '#fca5a5',
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+    },
+    catatanInput: {
+        flex: 1,
+        fontSize: 13,
+        color: '#1e293b',
+        fontWeight: '600',
+        minHeight: 88,
+        lineHeight: 20,
+    },
+    catatanCounter: {
+        fontSize: 10,
+        color: '#94a3b8',
+        textAlign: 'right',
+        marginTop: 4,
     },
 });
 

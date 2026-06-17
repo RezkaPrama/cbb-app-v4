@@ -35,6 +35,12 @@ export type RootStackParamList = {
     scannedSerial?: string;
     scannedStore?: { pelanggan: string; namaToko: string };
     manualMode?: boolean;
+    rackData?: {
+        type_rack?: 'Batang' | 'Wagon' | 'Tower' | 'Backwall' | '';  // ✅ tambah Backwall
+        size_rack?: 'Besar' | 'Kecil' | '';
+        brand_rack?: 'Nayla' | 'My Foot' | 'Parker' | 'Walton' | 'Stairway' | 'Salma' | '';
+        quota?: number;
+    };
   };
   AbsenSales: undefined;
   Checkin: { visitCount: number };

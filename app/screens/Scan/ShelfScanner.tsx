@@ -15,6 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather as FeatherIcon } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
+import { getDataLara } from '../../utils/asyncStorage';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,7 +104,23 @@ const ShelfScannerScreen: React.FC<ShelfScannerScreenProps> = ({ navigation }) =
     const [scannedData, setScannedData] = useState<string | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
     const modalOpacity = useRef(new Animated.Value(0)).current;
-    const modalScale   = useRef(new Animated.Value(0.9)).current;
+    const modalScale = useRef(new Animated.Value(0.9)).current;
+
+    // ── Token ─────────────────────────────────────────────────────────────────
+    const [token, setToken] = useState<string | null>(null); // ✅ Pindah ke sini
+
+    // ── Effect: fetch token ───────────────────────────────────────────────────
+    useEffect(() => {                                          // ✅ Pindah ke sini
+        const fetchData = async (): Promise<void> => {
+            try {
+                const storedToken = await getDataLara<string>("tokenUser");
+                if (storedToken) setToken(storedToken);
+            } catch (error) {
+                console.error('Error fetching token:', error);
+            }
+        };
+        fetchData();
+    }, []);
 
     // Laser line animation
     const laserAnim = useRef(new Animated.Value(0)).current;
@@ -226,30 +243,64 @@ const ShelfScannerScreen: React.FC<ShelfScannerScreenProps> = ({ navigation }) =
     }
 
     // ── Handle scan success ───────────────────────────────────────────────────
+    
     const handleBarcodeScanned = ({ type, data }: { type: string; data: string }) => {
         if (scanned) return;
         setScanned(true);
         setScanMode('processing');
 
-        // Ekstrak serial number dari URL, contoh:
-        // "https://citrabarubusana.org/admin/crm/rack/scan/243EQ60HGX" → "243EQ60HGX"
-        // Jika bukan URL (plain serial), gunakan data mentah.
-        const extractSerial = (raw: string): string => {
+        const resolveSerial = async (raw: string): Promise<string> => {
             try {
                 const url = new URL(raw);
                 const segments = url.pathname.split('/').filter(Boolean);
-                return segments[segments.length - 1] ?? raw;
-            } catch {
-                return raw; // bukan URL valid → pakai langsung
+                const lastSegment = segments[segments.length - 1] ?? raw;
+
+                // ── Versi BARU: citrabarubusana.org/.../SERIAL
+                if (url.hostname === 'citrabarubusana.org') {
+                    return lastSegment; // langsung serial number
+                }
+
+                // ── Versi LAMA: app.citrabarubusana.com/.../ID
+                if (url.hostname === 'app.citrabarubusana.com') {
+                    const response = await fetch(
+                        `https://citrabarubusana.org/api/rack/resolve-id/${lastSegment}`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${token}`, // token JWT user
+                                'Accept': 'application/json',
+                            },
+                        }
+                    );
+
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                    const json = await response.json();
+
+                    if (json.success && json.data?.serial_number) {
+                        return json.data.serial_number;
+                    }
+
+                    throw new Error('Serial number tidak ditemukan di response');
+                }
+
+                return lastSegment; // fallback hostname lain
+            } catch (err) {
+                console.warn('[resolveSerial] error:', err);
+                return raw; // fallback ke raw data jika semua gagal
             }
         };
 
-        // Simulasi 800ms processing feedback sebelum modal muncul
-        setTimeout(() => {
-            setScannedData(extractSerial(data));
-            setScanMode('scan');
-            openModal();
-        }, 800);
+        resolveSerial(data)
+            .then((serial) => {
+                setScannedData(serial);
+                setScanMode('scan');
+                openModal();
+            })
+            .catch(() => {
+                setScannedData(data);
+                setScanMode('scan');
+                openModal();
+            });
     };
 
     // ── Laser translateY (0 → WINDOW_SIZE) ────────────────────────────────────

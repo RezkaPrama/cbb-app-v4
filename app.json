@@ -16,6 +16,10 @@
       "supportsTablet": true,
       "config": {
         "googleMapsApiKey": "AIzaSyChSdBs66gzDY5XfvIVJ6b2ySFU4cJoZvE"
+      },
+      "bundleIdentifier": "com.anonymous.cbbappv4",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
