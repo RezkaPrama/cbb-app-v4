@@ -11,6 +11,9 @@ import {
   FlatList,
   ViewStyle,
   TextStyle,
+  AppState,
+  AppStateStatus,
+  Modal,
 } from "react-native";
 import { useFocusEffect, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -18,11 +21,14 @@ import moment from 'moment-timezone';
 import Toast from 'react-native-toast-message';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from "@react-native-picker/picker";
 import { storeDataLara, getDataLara } from "../../utils/asyncStorage";
+import { enqueueCheckin, getQueue, syncQueue } from "../../utils/offlineCheckinQueue";
 import { MaterialCommunityIcons, Feather as FeatherIcon } from '@expo/vector-icons';
 import HeaderStyle1 from "../../components/Header/HeaderStyle1";
+import { compressImage } from "../../utils/imageCompression";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const BASE_URL = 'https://citrabarubusana.org';
@@ -156,8 +162,19 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
   const [locationSubscriber, setLocationSubscriber] = useState<Location.LocationSubscription | null>(null);
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
 
+  // ── Kunjungan hari ini (sekarang bisa di-refresh) ─────────────
+  const [visitCount, setVisitCount] = useState<number>(route.params?.visitCount ?? 0);
+  const [visitCountLoading, setVisitCountLoading] = useState<boolean>(false);
+  const [visitCountError, setVisitCountError] = useState<boolean>(false);
+
+  // ── Antrian check-in offline ──────────────────────────────────
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [syncing, setSyncing] = useState<boolean>(false);
+
   // ── Foto checkin ──────────────────────────────────────────────
   const [fotoCheckinUri, setFotoCheckinUri] = useState<string | null>(null);
+  const [photoSourceModalVisible, setPhotoSourceModalVisible] = useState<boolean>(false);
 
   // ── Customer search state ────────────────────────────────────
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -167,8 +184,6 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
   const [customerDropdownVisible, setCustomerDropdownVisible] = useState<boolean>(false);
   const [customerError, setCustomerError] = useState<string | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const visitCount = route.params?.visitCount ?? 1;
 
   const isNewCustomerOffer = purpose === NEW_CUSTOMER_OFFER_VALUE;
 
@@ -215,6 +230,87 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // ── Ambil ulang jumlah kunjungan hari ini langsung dari server ─
+  const fetchVisitCount = useCallback(async () => {
+    setVisitCountLoading(true);
+    setVisitCountError(false);
+    try {
+      const authToken = await getDataLara<string>('tokenUser');
+      if (!authToken) {
+        setVisitCountLoading(false);
+        return;
+      }
+      // Sesuaikan endpoint ini dengan route Laravel yang menghitung
+      // jumlah store visit hari ini untuk user yang login.
+      const res = await fetch(`${BASE_URL}/api/store-visit/count-today`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${authToken}` },
+      });
+      const json = await res.json();
+      if (res.ok && typeof json.count === 'number') {
+        setVisitCount(json.count);
+      } else {
+        setVisitCountError(true);
+      }
+    } catch {
+      setVisitCountError(true);
+    } finally {
+      setVisitCountLoading(false);
+    }
+  }, []);
+
+  // ── Sinkronkan antrian check-in offline ke server ───────────────
+  const handleSync = useCallback(async () => {
+    const queue = await getQueue();
+    if (queue.length === 0) {
+      setPendingCount(0);
+      return;
+    }
+    setSyncing(true);
+    try {
+      const authToken = await getDataLara<string>('tokenUser');
+      if (!authToken) return;
+      const result = await syncQueue(authToken, BASE_URL);
+      if (result.synced > 0) {
+        Toast.show({
+          type: 'success',
+          text1: 'Sinkron Selesai',
+          text2: `${result.synced} check-in berhasil dikirim ke server.`,
+        });
+        fetchVisitCount();
+      }
+    } finally {
+      const remaining = await getQueue();
+      setPendingCount(remaining.length);
+      setSyncing(false);
+    }
+  }, [fetchVisitCount]);
+
+  // Saat screen pertama kali dibuka: ambil jumlah kunjungan terbaru + cek antrian
+  useEffect(() => {
+    fetchVisitCount();
+    getQueue().then((q) => setPendingCount(q.length));
+  }, [fetchVisitCount]);
+
+  // Dengarkan perubahan koneksi — begitu online, langsung coba sync
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const online = state.isConnected !== false && state.isInternetReachable !== false;
+      setIsOnline(online);
+      if (online) handleSync();
+    });
+    return () => unsubscribe();
+  }, [handleSync]);
+
+  // Saat app dibuka kembali dari background, coba sync juga
+  // (event NetInfo bisa saja terlewat ketika app di-background)
+  useEffect(() => {
+    const onAppStateChange = (state: AppStateStatus) => {
+      if (state === 'active') handleSync();
+    };
+    const sub = AppState.addEventListener('change', onAppStateChange);
+    return () => sub.remove();
+  }, [handleSync]);
 
   const requestLocationPermission = async (): Promise<boolean> => {
     try {
@@ -275,7 +371,7 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
       }
 
       const params = new URLSearchParams({ search: search.trim(), limit: '20' });
-      const url = `${BASE_URL}/api/customers?${params}`;
+      const url = `${BASE_URL}/api/rack/customers?${params}`;
 
       const res = await fetch(url, {
         method: 'GET',
@@ -361,9 +457,12 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
   };
 
   // ── Camera: foto checkin ─────────────────────────────────────
-  const pickFotoCheckin = async () => {
-    const { status: camStatus } = await ImagePicker.requestCameraPermissionsAsync();
-    if (camStatus !== 'granted') {
+  const openPhotoSourcePicker = () => setPhotoSourceModalVisible(true);
+
+  const pickFromCamera = async () => {
+    setPhotoSourceModalVisible(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
       Toast.show({ type: 'error', text1: 'Izin Ditolak', text2: 'Aplikasi memerlukan izin kamera.' });
       return;
     }
@@ -372,13 +471,39 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
       quality: 0.8,
     });
     if (!result.canceled) {
-      setFotoCheckinUri(result.assets[0].uri);
+      const compressedUri = await compressImage(result.assets[0].uri);
+      setFotoCheckinUri(compressedUri);
+    }
+  };
+
+  const pickFromGallery = async () => {
+    setPhotoSourceModalVisible(false);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Toast.show({ type: 'error', text1: 'Izin Ditolak', text2: 'Aplikasi memerlukan izin akses galeri.' });
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      const compressedUri = await compressImage(result.assets[0].uri);
+      setFotoCheckinUri(compressedUri);
     }
   };
 
   const handleAbsen = async (): Promise<void> => {
     setIsLoading(true);
     const jakartaTime = moment().tz('Asia/Jakarta').format('YYYY-MM-DD HH:mm:ss');
+
+    // ✅ FIX: Ambil token fresh dari AsyncStorage, bukan dari state
+    const authToken = await getDataLara<string>('tokenUser');
+    if (!authToken) {
+      setIsLoading(false);
+      Toast.show({ type: 'error', text1: 'Sesi Habis', text2: 'Silakan login ulang.' });
+      return;
+    }
 
     if (!currentPosition?.latitude || !currentPosition?.longitude)
       return (setIsLoading(false), Toast.show({ type: 'error', text1: 'Error', text2: 'Koordinat GPS tidak valid!' }));
@@ -393,6 +518,43 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
     if (!userDetails?.id)
       return (setIsLoading(false), Toast.show({ type: 'error', text1: 'Error', text2: 'User ID tidak ditemukan!' }));
 
+    const uriParts = fotoCheckinUri.split('.');
+    const rawExt = uriParts[uriParts.length - 1];
+    const extension = rawExt === 'jpg' ? 'jpeg' : rawExt;
+
+    const idContact = !isNewCustomerOffer && selectedCustomer ? String(selectedCustomer.id) : undefined;
+    const addressStore = !isNewCustomerOffer && selectedCustomer ? (selectedCustomer.alamat ?? '') : undefined;
+
+    const queueOffline = async () => {
+      await enqueueCheckin({
+        latitude: currentPosition.latitude,
+        longitude: currentPosition.longitude,
+        timestamp_checkin: jakartaTime,
+        name_store: nameStore,
+        purpose,
+        notes: notes.trim() || undefined,
+        id_contact: idContact,
+        address_store: addressStore,
+        photoExtension: extension,
+        sourcePhotoUri: fotoCheckinUri,
+      });
+      const queue = await getQueue();
+      setPendingCount(queue.length);
+      Toast.show({
+        type: 'info',
+        text1: 'Tersimpan Offline',
+        text2: 'Tidak ada koneksi. Check-in akan otomatis terkirim saat sinyal kembali.',
+      });
+      navigation.navigate('Main');
+    };
+
+    const netState = await NetInfo.fetch();
+    if (netState.isConnected === false) {
+      await queueOffline();
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('latitude', currentPosition.latitude.toString());
@@ -401,32 +563,48 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
       formData.append('name_store', nameStore);
       formData.append('purpose', purpose);
       if (notes.trim()) formData.append('notes', notes.trim());
-
-      if (!isNewCustomerOffer && selectedCustomer) {
-        formData.append('id_contact', String(selectedCustomer.id));
-        formData.append('address_store', selectedCustomer.alamat ?? '');
-      }
-
-      const uriParts = fotoCheckinUri.split('.');
-      const extension = uriParts[uriParts.length - 1];
+      if (idContact) formData.append('id_contact', idContact);
+      if (addressStore !== undefined) formData.append('address_store', addressStore);
       formData.append('foto_checkin', {
         uri: fotoCheckinUri,
         name: `foto_checkin.${extension}`,
-        type: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+        type: `image/${extension}`,
       } as any);
 
-      const response = await fetch("https://citrabarubusana.org/api/store-visit/check-in", {
+      // ✅ FIX: Pakai authToken yang fresh, bukan token dari state
+      const response = await fetch(`${BASE_URL}/api/store-visit/check-in`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${token}` },
+        headers: { "Authorization": `Bearer ${authToken}` },
         body: formData,
       });
 
-      const responseData: CheckInResponse = await response.json();
+      // ✅ FIX: Tangkap response text dulu untuk debug kalau JSON parse gagal
+      const responseText = await response.text();
+      let responseData: CheckInResponse;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        // Server kembalikan HTML (misal error 500 dari PHP) bukan JSON
+        console.error('Non-JSON response:', responseText.substring(0, 300));
+        Toast.show({ type: 'error', text1: 'Error Server', text2: 'Server mengembalikan response tidak valid.' });
+        setIsLoading(false);
+        return;
+      }
 
       if (response.ok) {
         if (responseData.data?.id) await storeDataLara("storeVisitId", responseData.data.id.toString());
         Toast.show({ type: 'success', text1: 'Sukses', text2: 'Absen Check In Toko berhasil!' });
         navigation.navigate('Main');
+      } else if (response.status === 401) {
+        // Token expired / tidak valid
+        Toast.show({ type: 'error', text1: 'Sesi Habis', text2: 'Silakan login ulang.' });
+      } else if (response.status === 400) {
+        // Masih ada kunjungan aktif
+        Toast.show({
+          type: 'error',
+          text1: 'Kunjungan Aktif',
+          text2: responseData.message ?? 'Silakan checkout kunjungan sebelumnya.',
+        });
       } else {
         let msg = 'Absen gagal';
         if (responseData.message) msg += ': ' + responseData.message;
@@ -437,7 +615,8 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
         Toast.show({ type: 'error', text1: 'Error', text2: msg });
       }
     } catch {
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Periksa Koneksi Internet Anda.' });
+      // Hanya masuk sini kalau benar-benar network error (bukan HTTP error)
+      await queueOffline();
     } finally {
       setIsLoading(false);
     }
@@ -507,6 +686,22 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
               <View style={styles.visitBadge}>
                 <Text style={styles.visitBadgeNum}>{visitCount}</Text>
                 <Text style={styles.visitBadgeText}>Kunjungan{'\n'}hari ini</Text>
+                <TouchableOpacity
+                  onPress={fetchVisitCount}
+                  disabled={visitCountLoading}
+                  style={styles.refreshBtn}
+                  activeOpacity={0.7}
+                >
+                  {visitCountLoading ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <FeatherIcon
+                      name="refresh-cw"
+                      size={14}
+                      color={visitCountError ? '#fbbf24' : 'rgba(255,255,255,0.85)'}
+                    />
+                  )}
+                </TouchableOpacity>
               </View>
 
               {/* GPS pill */}
@@ -518,6 +713,30 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
               </View>
             </View>
           </View>
+
+          {/* ── BANNER ANTRIAN OFFLINE ── */}
+          {pendingCount > 0 && (
+            <View style={styles.syncBanner}>
+              <MaterialCommunityIcons
+                name={isOnline ? 'cloud-upload-outline' : 'cloud-off-outline'}
+                size={16}
+                color="#92400e"
+              />
+              <Text style={styles.syncBannerText}>
+                {pendingCount} check-in menunggu sinkronisasi
+                {!isOnline ? ' (tidak ada koneksi)' : ''}
+              </Text>
+              {isOnline && (
+                <TouchableOpacity onPress={handleSync} disabled={syncing} style={styles.syncBannerBtn}>
+                  {syncing ? (
+                    <ActivityIndicator size="small" color="#92400e" />
+                  ) : (
+                    <Text style={styles.syncBannerBtnText}>Sync</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {/* ── FORM CARD ── */}
           <View style={styles.formCard}>
@@ -671,7 +890,7 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>FOTO CHECK-IN TOKO <Text style={styles.required}>*</Text></Text>
               <TouchableOpacity
-                onPress={pickFotoCheckin}
+                onPress={openPhotoSourcePicker}
                 activeOpacity={0.85}
                 style={[styles.photoPicker, fotoCheckinUri && styles.photoPickerFilled]}
               >
@@ -734,6 +953,54 @@ const Checkin: React.FC<CheckinProps> = ({ navigation, route }) => {
             </View>
           )}
         </ScrollView>
+
+        {/* ── MODAL PILIHAN SUMBER FOTO ── */}
+        <Modal
+          transparent
+          visible={photoSourceModalVisible}
+          animationType="slide"
+          onRequestClose={() => setPhotoSourceModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={photoModalStyles.backdrop}
+            activeOpacity={1}
+            onPress={() => setPhotoSourceModalVisible(false)}
+          >
+            <View style={photoModalStyles.sheet}>
+              <View style={photoModalStyles.handle} />
+              <Text style={photoModalStyles.title}>Pilih Sumber Foto</Text>
+
+              <TouchableOpacity style={photoModalStyles.option} onPress={pickFromCamera} activeOpacity={0.8}>
+                <View style={photoModalStyles.optionIcon}>
+                  <FeatherIcon name="camera" size={20} color="#1e3a8a" />
+                </View>
+                <View>
+                  <Text style={photoModalStyles.optionLabel}>Kamera</Text>
+                  <Text style={photoModalStyles.optionSub}>Ambil foto langsung</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={photoModalStyles.option} onPress={pickFromGallery} activeOpacity={0.8}>
+                <View style={photoModalStyles.optionIcon}>
+                  <FeatherIcon name="image" size={20} color="#1e3a8a" />
+                </View>
+                <View>
+                  <Text style={photoModalStyles.optionLabel}>Galeri</Text>
+                  <Text style={photoModalStyles.optionSub}>Pilih dari foto tersimpan</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={photoModalStyles.cancelBtn}
+                onPress={() => setPhotoSourceModalVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={photoModalStyles.cancelText}>Batal</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
         <Toast />
       </SafeAreaView>
     </SafeAreaProvider>
@@ -768,11 +1035,28 @@ const styles = StyleSheet.create({
   } as ViewStyle,
   visitBadgeNum: { fontSize: 28, fontWeight: '800', color: '#ffffff' } as TextStyle,
   visitBadgeText: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '600', lineHeight: 16 } as TextStyle,
+  refreshBtn: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',
+    marginLeft: 2,
+  } as ViewStyle,
   gpsPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8,
   } as ViewStyle,
   gpsPillText: { fontSize: 10, color: 'rgba(255,255,255,0.75)', fontFamily: 'monospace', lineHeight: 15 } as TextStyle,
+
+  /* Sync banner */
+  syncBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fde68a',
+    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+  } as ViewStyle,
+  syncBannerText: { flex: 1, fontSize: 12, color: '#92400e', fontWeight: '600' } as TextStyle,
+  syncBannerBtn: {
+    backgroundColor: '#fde68a', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+  } as ViewStyle,
+  syncBannerBtnText: { fontSize: 11, fontWeight: '800', color: '#92400e' } as TextStyle,
 
   /* Form card */
   formCard: {
@@ -912,6 +1196,50 @@ const styles = StyleSheet.create({
 
   incompleteHint: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 16 } as ViewStyle,
   incompleteHintText: { fontSize: 12, color: '#94a3b8', fontWeight: '500', textAlign: 'center', flexShrink: 1 } as TextStyle,
+});
+
+const photoModalStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  } as ViewStyle,
+  sheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 36,
+    gap: 12,
+  } as ViewStyle,
+  handle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#e2e8f0',
+    alignSelf: 'center',
+    marginBottom: 8,
+  } as ViewStyle,
+  title: {
+    fontSize: 15, fontWeight: '800', color: '#0f172a',
+    textAlign: 'center', marginBottom: 4,
+  } as TextStyle,
+  option: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: '#f8fafc', borderRadius: 14,
+    padding: 16, borderWidth: 1, borderColor: '#e2e8f0',
+  } as ViewStyle,
+  optionIcon: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe',
+    justifyContent: 'center', alignItems: 'center',
+  } as ViewStyle,
+  optionLabel: { fontSize: 14, fontWeight: '700', color: '#0f172a' } as TextStyle,
+  optionSub: { fontSize: 11, color: '#94a3b8', marginTop: 2 } as TextStyle,
+  cancelBtn: {
+    marginTop: 4, alignItems: 'center',
+    paddingVertical: 14, borderRadius: 14,
+    backgroundColor: '#f1f5f9',
+  } as ViewStyle,
+  cancelText: { fontSize: 14, fontWeight: '700', color: '#64748b' } as TextStyle,
 });
 
 export default Checkin;

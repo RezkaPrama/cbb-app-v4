@@ -2,7 +2,6 @@
   "expo": {
     "name": "cbb-app-v4",
     "slug": "cbb-app-v4",
-    "owner": "rezkaprama2",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -47,7 +46,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "360af42f-b477-4c06-9270-cabd7b6aec9c"
+        "projectId": "9e3572a8-a571-42ad-b8dd-86d2fc7c5a29"
       }
     },
     "plugins": [

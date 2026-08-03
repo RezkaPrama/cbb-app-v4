@@ -1,5 +1,6 @@
 // apiService.ts - TypeScript Version
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDataLara } from '../utils/asyncStorage';
 
 const BASE_URL = 'https://citrabarubusana.org/api';
 
@@ -155,6 +156,132 @@ interface NotificationData {
   created_at?: string;
 }
 
+// ============ PIUTANG TYPES ============
+
+interface CustomerPiutangSearch {
+  idcust: string;
+  nama: string;
+  alamat?: string;
+  kode_cab?: string;
+  telepon?: string;
+  kecamatan?: string;
+}
+
+interface InvoicePiutang {
+  id: number;
+  no_piutang: string;
+  no_penjualan: string;
+  tgl_terima: string;
+  tgl_jatuh_tempo: string;
+  tgl_faktur: string;
+  netto: number;
+  total_sudah_bayar: number;
+  sisa_piutang: number;
+  sisa_piutang_formatted: string;
+  is_overdue: boolean;
+}
+
+interface CustomerInvoicesResponse {
+  total_sisa: number;
+  jumlah_faktur: number;
+  data: InvoicePiutang[];
+}
+
+interface ReturPiutang {
+  no_retur: string;
+  tgl_terima: string;
+  no_faktur: string;
+  netto: number;
+  netto_formatted: string;
+  alasan: string;
+}
+
+interface BankAccountPiutang {
+  id: number;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+}
+
+interface PaymentMethodsResponse {
+  jenis_pembayaran: string[];
+  bank_accounts: BankAccountPiutang[];
+}
+
+interface PembayaranPiutangPayload {
+  customer_id: string;
+  tgl_bayar: string;
+  jenis_pembayaran: 'Tunai' | 'Transfer' | 'Giro' | 'Credit Memo' | 'Debit Memo' | 'Retur';
+  total_bayar: number;
+  piutang_ids?: number[];
+  keterangan?: string;
+  bank_account_id?: number;
+  nama_giro?: string;
+  no_giro?: string;
+  tgl_jatuh_tempo_giro?: string;
+  no_retur?: string;
+  bukti_transfer?: PhotoFile | null;
+}
+
+interface PembayaranPiutangStoreResponse {
+  no_bayar: string;
+  details_count: number;
+}
+
+interface PiutangAllocation {
+  no_faktur: string;
+  jumlah_bayar: number;
+  sisa_piutang: number;
+  status_faktur: string;
+}
+
+interface MyPaymentItem {
+  no_bayar: string;
+  idcust: string;
+  nama_customer: string;
+  tgl_bayar: string;
+  jenis_pembayaran: string;
+  status_posting: string;
+  total: number;
+  total_formatted: string;
+  keterangan?: string;
+  bukti_url?: string | null;
+  jumlah_faktur: number;
+  created_at: string;
+  allocations: PiutangAllocation[];
+}
+
+interface MyPaymentsResponse {
+  data: MyPaymentItem[];
+  meta: {
+    current_page: number;
+    last_page: number;
+    total: number;
+  };
+}
+
+interface PaymentDetailResponse {
+  no_bayar: string;
+  tgl_bayar: string;
+  jenis_pembayaran: string;
+  status_posting: string;
+  total: number;
+  total_formatted: string;
+  bukti_transfer: string | null;
+  keterangan: string | null;
+  reject_reason: string | null;
+  details: PiutangAllocation[];
+}
+
+interface CustomerPaymentSummary {
+  jumlah_piutang: number;
+  total_netto: number;
+  total_sudah_bayar: number;
+  total_sisa: number;
+  total_sisa_formatted: string;
+  jumlah_overdue: number;
+}
+
 type QueryParams = Record<string, string | number | boolean>;
 
 // ============ API SERVICE CLASS ============
@@ -167,10 +294,11 @@ class ApiService {
   }
 
   // Helper method untuk mendapatkan token dari key yang benar
+  // Helper method untuk mendapatkan token dari key yang benar
   async getAuthToken(): Promise<string | null> {
     try {
-      const token = await AsyncStorage.getItem('tokenUser');
-      return token;
+      const token = await getDataLara<string>('tokenUser');
+      return token ?? null;
     } catch (error) {
       console.error('Error getting auth token:', error);
       return null;
@@ -179,7 +307,9 @@ class ApiService {
 
   // Helper method untuk membuat headers
   async getHeaders(includeAuth = true, isMultipart = false): Promise<Record<string, string>> {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+    };
 
     if (!isMultipart) {
       headers['Content-Type'] = 'application/json';
@@ -705,6 +835,158 @@ class ApiService {
     return await this.makeRequest(`/attendance/${id}`);
   }
 
+  // ============ PIUTANG (PEMBAYARAN PIUTANG) APIs ============
+
+  async searchPiutangCustomer(q: string): Promise<ApiResponse<CustomerPiutangSearch[]>> {
+    const queryString = new URLSearchParams({ q }).toString();
+    return await this.makeRequest(`/piutang/customers/search?${queryString}`);
+  }
+
+  async getPiutangCustomerInvoices(idcust: string): Promise<ApiResponse<InvoicePiutang[]>> {
+    // NOTE: total_sisa & jumlah_faktur ikut di root response, bukan di dalam `data`.
+    // makeRequest tetap mengembalikan objek utuh, jadi akses lewat response.total_sisa dsb.
+    return await this.makeRequest(`/piutang/customers/${idcust}/invoices`);
+  }
+
+  async getPiutangReturByCustomer(idcust: string): Promise<ApiResponse<ReturPiutang[]>> {
+    return await this.makeRequest(`/piutang/customers/${idcust}/retur`);
+  }
+
+  async getPiutangPaymentMethods(): Promise<ApiResponse<PaymentMethodsResponse>> {
+    return await this.makeRequest('/piutang/payment-methods');
+  }
+
+  async getPiutangCustomerPaymentSummary(idcust: string): Promise<ApiResponse<CustomerPaymentSummary>> {
+    return await this.makeRequest(`/piutang/customers/${idcust}/payment-summary`);
+  }
+
+  async getPiutangCustomerPaymentHistory(idcust: string): Promise<ApiResponse<unknown[]>> {
+    return await this.makeRequest(`/piutang/customers/${idcust}/payments`);
+  }
+
+  async getMyPiutangPayments(params: QueryParams = {}): Promise<ApiResponse<MyPaymentItem[]>> {
+    const queryString = new URLSearchParams(params as Record<string, string>).toString();
+    const endpoint = queryString ? `/piutang/my-payments?${queryString}` : '/piutang/my-payments';
+    return await this.makeRequest(endpoint);
+  }
+
+  async getPiutangPaymentDetail(noBayar: string): Promise<ApiResponse<PaymentDetailResponse>> {
+    return await this.makeRequest(`/piutang/payments/${encodeURIComponent(noBayar)}`);
+  }
+
+  /**
+   * Submit pembayaran piutang. Selalu pakai FormData karena bukti_transfer
+   * bersifat opsional file upload — konsisten dengan pola checkIn/checkOut.
+   */
+  async submitPiutangPayment(
+    payload: PembayaranPiutangPayload
+  ): Promise<ApiResponse<PembayaranPiutangStoreResponse>> {
+    const formData = new FormData();
+    formData.append('customer_id', payload.customer_id);
+    formData.append('tgl_bayar', payload.tgl_bayar);
+    formData.append('jenis_pembayaran', payload.jenis_pembayaran);
+    formData.append('total_bayar', String(payload.total_bayar));
+
+    if (payload.keterangan) formData.append('keterangan', payload.keterangan);
+    if (payload.bank_account_id) formData.append('bank_account_id', String(payload.bank_account_id));
+    if (payload.nama_giro) formData.append('nama_giro', payload.nama_giro);
+    if (payload.no_giro) formData.append('no_giro', payload.no_giro);
+    if (payload.tgl_jatuh_tempo_giro) formData.append('tgl_jatuh_tempo_giro', payload.tgl_jatuh_tempo_giro);
+    if (payload.no_retur) formData.append('no_retur', payload.no_retur);
+
+    if (payload.piutang_ids && payload.piutang_ids.length) {
+      payload.piutang_ids.forEach((id) => {
+        formData.append('piutang_ids[]', String(id));
+      });
+    }
+
+    if (payload.bukti_transfer && payload.bukti_transfer.uri) {
+      formData.append('bukti_transfer', {
+        uri: payload.bukti_transfer.uri,
+        type: payload.bukti_transfer.type || 'image/jpeg',
+        name: payload.bukti_transfer.fileName || `bukti_piutang_${Date.now()}.jpg`,
+      } as unknown as Blob);
+    }
+
+    const token = await this.getAuthToken();
+    if (!token) {
+      return {
+        success: false,
+        message: 'Token autentikasi tidak ditemukan. Silakan login kembali.',
+        needsLogin: true,
+      };
+    }
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    };
+
+    try {
+      const response = await fetch(`${this.baseURL}/piutang/payments`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      const contentType = response.headers.get('content-type');
+
+      if (contentType && contentType.includes('text/html')) {
+        return {
+          success: false,
+          message: 'Sesi Anda telah berakhir. Silakan login kembali.',
+          needsLogin: true,
+        };
+      }
+
+      if (response.status === 401) {
+        return {
+          success: false,
+          message: 'Sesi Anda telah berakhir. Silakan login kembali.',
+          needsLogin: true,
+        };
+      }
+
+      const responseText = await response.text();
+      let data: ApiResponse<PembayaranPiutangStoreResponse>;
+
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('JSON parse error. Response was:', responseText);
+        return {
+          success: false,
+          message: 'Format respons dari server tidak valid. Silakan coba lagi.',
+        };
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          message: data.message || `Gagal menyimpan pembayaran (HTTP ${response.status})`,
+          errors: data.errors || null,
+        };
+      }
+
+      return data;
+    } catch (error) {
+      const err = error as Error;
+      console.error('submitPiutangPayment error:', err);
+
+      if (err.message.includes('Network request failed')) {
+        return {
+          success: false,
+          message: 'Tidak ada koneksi internet. Periksa koneksi Anda.',
+        };
+      }
+
+      return {
+        success: false,
+        message: err.message || 'Terjadi kesalahan saat menyimpan pembayaran',
+      };
+    }
+  }
+
   // ============ SALES PO APIs ============
   async getSalesPOs(params: QueryParams = {}): Promise<ApiResponse<SalesPOData[]>> {
     const queryString = new URLSearchParams(params as Record<string, string>).toString();
@@ -929,6 +1211,7 @@ class ApiService {
       method: 'DELETE',
     });
   }
+
 }
 
 // Create and export a singleton instance
@@ -959,4 +1242,17 @@ export type {
   AnalyticsData,
   NotificationData,
   QueryParams,
+  CustomerPiutangSearch,
+  InvoicePiutang,
+  CustomerInvoicesResponse,
+  ReturPiutang,
+  BankAccountPiutang,
+  PaymentMethodsResponse,
+  PembayaranPiutangPayload,
+  PembayaranPiutangStoreResponse,
+  PiutangAllocation,
+  MyPaymentItem,
+  MyPaymentsResponse,
+  PaymentDetailResponse,
+  CustomerPaymentSummary,
 };

@@ -1,5 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { createSlice } from '@reduxjs/toolkit';
+import piutangReducer from '../../features/piutang/piutangSlice';
 
 // Inline slice - langsung di file Store.js
 const authSlice = createSlice({
@@ -42,6 +43,7 @@ const Store = configureStore({
   reducer: {
     auth: authSlice.reducer,
     theme: themeSlice.reducer,
+    piutang: piutangReducer,
   },
 });
 

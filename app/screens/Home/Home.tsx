@@ -27,6 +27,8 @@ import BannerListPiutang from '../../components/Banner/BannerListPiutang';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDispatch } from 'react-redux';
 import { logout } from '../../redux/Store/authSlice';
+import HistorySales from '../../components/Banner/HistorySales';
+import BannerBayarPiutang from '../../components/Banner/BannerBayarPiutang';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -247,9 +249,19 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                     {/* 2. Absen Sales — biru gelap + dot grid */}
                     <BannerAbsenSales />
 
+                    {/* 4. Manajemen Rak CBB — navy, badge "Modul Baru v5", dua tombol */}
+                    <View style={styles.bannerRakWrapper}>
+                        <HistorySales />
+                    </View>
+
                     {/* 3. Manajemen Rak CBB — navy, badge "Modul Baru v5", dua tombol */}
                     <View style={styles.bannerRakWrapper}>
                         <BannerScanRack />
+                    </View>
+
+                    {/* 3. bayar piutang — navy, badge "Modul Baru v5", dua tombol */}
+                    <View style={styles.bannerRakWrapper}>
+                        <BannerBayarPiutang />
                     </View>
 
                     {/* 4. Section Label: Informasi Absensi */}

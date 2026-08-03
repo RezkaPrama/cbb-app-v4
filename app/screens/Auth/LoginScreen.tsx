@@ -42,10 +42,12 @@ interface LoginResponse {
 
 const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const dispatch = useDispatch();
-  const [username, setUsername] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
-    // const [username, setUsername] = useState<string>('rezkaprama');
-    // const [password, setPassword] = useState<string>('23November');
+  // const [username, setUsername] = useState<string>('');
+  // const [password, setPassword] = useState<string>('');
+    const [username, setUsername] = useState<string>('rezkaprama');
+    const [password, setPassword] = useState<string>('23November');
+    // const [username, setUsername] = useState<string>('irman');
+    // const [password, setPassword] = useState<string>('cbb202020');
   const [passwordShow, setPasswordShow] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 

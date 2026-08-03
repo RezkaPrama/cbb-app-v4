@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   StyleSheet,
   View,
@@ -7,8 +7,11 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   TextInput,
+  Image,
   ViewStyle,
   TextStyle,
+  AppState,
+  AppStateStatus,
 } from "react-native";
 import { RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -16,29 +19,20 @@ import HeaderStyle1 from "../../components/Header/HeaderStyle1";
 import moment from 'moment-timezone';
 import { getDataLara } from "../../utils/asyncStorage";
 import Toast from 'react-native-toast-message';
-import axios, { AxiosError } from 'axios';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import NetInfo from '@react-native-community/netinfo';
+import { enqueueCheckout, getQueue, syncQueue } from "../../utils/offlineCheckoutQueue";
+import { MaterialCommunityIcons, Feather as FeatherIcon } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { compressImage } from "../../utils/imageCompression";
+
+// ─── Config ──────────────────────────────────────────────────────────────────
+const BASE_URL = 'https://citrabarubusana.org';
 
 // Types
-interface CheckoutRequestData {
-  id: number;
-  name_store: string;
-  address_store: string;
-  result: string;
-  order_quantity: string | null;
-  bill_quantity: string | null;
-  timestamp_checkout: string;
-}
-
 interface CheckoutResponse {
   code: number;
   status: string;
-  message?: string;
-  errors?: Record<string, string[]>;
-}
-
-interface ErrorResponse {
   message?: string;
   errors?: Record<string, string[]>;
 }
@@ -153,15 +147,103 @@ const inputStyles = StyleSheet.create({
   } as TextStyle,
 });
 
+// ── Photo picker box ─────────────────────────────────────────────
+interface PhotoPickerProps {
+  uri: string | null;
+  onPick: () => void;
+  onRemove: () => void;
+  label: string;
+  sublabel: string;
+  iconName: string;
+}
+
+const PhotoPicker: React.FC<PhotoPickerProps> = ({ uri, onPick, onRemove, label, sublabel, iconName }) => (
+  <TouchableOpacity
+    onPress={onPick}
+    activeOpacity={0.85}
+    style={[photoStyles.photoPicker, uri && photoStyles.photoPickerFilled]}
+  >
+    {uri ? (
+      <>
+        <Image source={{ uri }} style={photoStyles.photoPreview} />
+        <TouchableOpacity onPress={onRemove} style={photoStyles.removePhotoBtn} activeOpacity={0.8}>
+          <FeatherIcon name="trash-2" size={13} color="#fff" />
+        </TouchableOpacity>
+      </>
+    ) : (
+      <View style={photoStyles.photoPickerInner}>
+        <View style={photoStyles.cameraIconCircle}>
+          <MaterialCommunityIcons name={iconName as any} size={22} color="#b91c1c" />
+        </View>
+        <Text style={photoStyles.photoPickerText}>{label}</Text>
+        <Text style={photoStyles.photoPickerSub}>{sublabel}</Text>
+      </View>
+    )}
+  </TouchableOpacity>
+);
+
+const photoStyles = StyleSheet.create({
+  photoPicker: {
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#94a3b8',
+    borderRadius: 14,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 130,
+  } as ViewStyle,
+  photoPickerFilled: {
+    borderStyle: 'solid',
+    borderColor: '#cbd5e1',
+  } as ViewStyle,
+  photoPreview: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    resizeMode: 'contain',
+  } as any,
+  photoPickerInner: { alignItems: 'center', gap: 6 } as ViewStyle,
+  cameraIconCircle: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
+    justifyContent: 'center', alignItems: 'center', marginBottom: 4,
+  } as ViewStyle,
+  photoPickerText: { fontSize: 13, fontWeight: '700', color: '#334155' } as TextStyle,
+  photoPickerSub: { fontSize: 11, color: '#94a3b8' } as TextStyle,
+  removePhotoBtn: {
+    position: 'absolute', top: 8, right: 8,
+    backgroundColor: '#ef4444', width: 28, height: 28,
+    borderRadius: 14, justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3, shadowRadius: 4, elevation: 4,
+  } as ViewStyle,
+});
+
+// ── Helpers ───────────────────────────────────────────────────
+const getExtension = (uri: string): string => {
+  const parts = uri.split('.');
+  const raw = parts[parts.length - 1];
+  return raw === 'jpg' ? 'jpeg' : raw;
+};
+
 // ── Main component ─────────────────────────────────────────────
 const Checkout: React.FC<CheckoutProps> = ({ navigation, route }) => {
   const { idAbsen, nameStore, visitCount } = route.params;
-  const [addressStore, setAddressStore] = useState<string>('');
   const [result, setResult] = useState<string>('');
   const [orderQty, setOrderQty] = useState<string>('');
   const [billQty, setBillQty] = useState<string>('');
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // ── Foto display & foto bersama PIC toko ──────────────────────
+  const [fotoDisplayUri, setFotoDisplayUri] = useState<string | null>(null);
+  const [fotoPicTokoUri, setFotoPicTokoUri] = useState<string | null>(null);
+
+  // ── Antrian check-out offline ──────────────────────────────────
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [syncing, setSyncing] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchData = async (): Promise<void> => {
@@ -175,60 +257,173 @@ const Checkout: React.FC<CheckoutProps> = ({ navigation, route }) => {
     fetchData();
   }, []);
 
+  // ── Sinkronkan antrian checkout offline ke server ───────────────
+  const handleSync = useCallback(async () => {
+    const queue = await getQueue();
+    if (queue.length === 0) {
+      setPendingCount(0);
+      return;
+    }
+    setSyncing(true);
+    try {
+      const authToken = await getDataLara<string>('tokenUser');
+      if (!authToken) return;
+      const result = await syncQueue(authToken, BASE_URL);
+      if (result.synced > 0) {
+        Toast.show({
+          type: 'success',
+          text1: 'Sinkron Selesai',
+          text2: `${result.synced} checkout berhasil dikirim ke server.`,
+        });
+      }
+    } finally {
+      const remaining = await getQueue();
+      setPendingCount(remaining.length);
+      setSyncing(false);
+    }
+  }, []);
+
+  // Saat screen pertama kali dibuka, cek antrian
+  useEffect(() => {
+    getQueue().then((q) => setPendingCount(q.length));
+  }, []);
+
+  // Dengarkan perubahan koneksi — begitu online, langsung coba sync
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const online = state.isConnected !== false && state.isInternetReachable !== false;
+      setIsOnline(online);
+      if (online) handleSync();
+    });
+    return () => unsubscribe();
+  }, [handleSync]);
+
+  // Saat app dibuka kembali dari background, coba sync juga
+  useEffect(() => {
+    const onAppStateChange = (state: AppStateStatus) => {
+      if (state === 'active') handleSync();
+    };
+    const sub = AppState.addEventListener('change', onAppStateChange);
+    return () => sub.remove();
+  }, [handleSync]);
+
+  const pickPhoto = async (setter: (uri: string) => void) => {
+    const { status: camStatus } = await ImagePicker.requestCameraPermissionsAsync();
+    if (camStatus !== 'granted') {
+      Toast.show({ type: 'error', text1: 'Izin Ditolak', text2: 'Aplikasi memerlukan izin kamera.' });
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      const compressedUri = await compressImage(result.assets[0].uri);
+      setter(compressedUri);
+    }
+  };
+
+  const appendPhoto = (formData: FormData, fieldName: string, uri: string) => {
+    const extension = getExtension(uri);
+    formData.append(fieldName, {
+      uri,
+      name: `${fieldName}.${extension}`,
+      type: `image/${extension}`,
+    } as any);
+  };
+
   const handleCheckout = async (): Promise<void> => {
     setIsLoading(true);
     const jakartaTime = moment().tz('Asia/Jakarta').format('YYYY-MM-DDTHH:mm:ss');
 
-    if (!nameStore || !addressStore.trim() || !result.trim()) {
+    if (!nameStore || !result.trim()) {
       setIsLoading(false);
-      return Toast.show({ type: 'error', text1: 'Error', text2: 'Alamat Toko dan Hasil Kunjungan harus diisi!' });
+      return Toast.show({ type: 'error', text1: 'Error', text2: 'Hasil Kunjungan harus diisi!' });
+    }
+    if (!fotoDisplayUri) {
+      setIsLoading(false);
+      return Toast.show({ type: 'error', text1: 'Error', text2: 'Foto display rak/produk wajib diambil!' });
+    }
+    if (!fotoPicTokoUri) {
+      setIsLoading(false);
+      return Toast.show({ type: 'error', text1: 'Error', text2: 'Foto bersama PIC toko wajib diambil!' });
+    }
+
+    // Simpan checkout ini ke antrian lokal (dipanggil saat offline ATAU
+    // saat request online gagal karena masalah jaringan).
+    const queueOffline = async () => {
+      await enqueueCheckout({
+        idAbsen,
+        name_store: nameStore,
+        result: result.trim(),
+        order_quantity: orderQty.trim() || undefined,
+        bill_quantity: billQty.trim() || undefined,
+        timestamp_checkout: jakartaTime,
+        fotoDisplayExtension: getExtension(fotoDisplayUri),
+        fotoPicTokoExtension: getExtension(fotoPicTokoUri),
+        sourceFotoDisplayUri: fotoDisplayUri,
+        sourceFotoPicTokoUri: fotoPicTokoUri,
+      });
+      const queue = await getQueue();
+      setPendingCount(queue.length);
+      Toast.show({
+        type: 'info',
+        text1: 'Tersimpan Offline',
+        text2: 'Tidak ada koneksi. Checkout akan otomatis terkirim saat sinyal kembali.',
+      });
+      navigation.navigate('Main');
+    };
+
+    // Cek status koneksi dulu — kalau sudah pasti tidak ada koneksi,
+    // langsung antri tanpa perlu mencoba fetch.
+    const netState = await NetInfo.fetch();
+    if (netState.isConnected === false) {
+      await queueOffline();
+      setIsLoading(false);
+      return;
     }
 
     try {
-      const requestData: CheckoutRequestData = {
-        id: idAbsen,
-        name_store: nameStore,
-        address_store: addressStore.trim(),
-        result: result.trim(),
-        order_quantity: orderQty.trim() || null,
-        bill_quantity: billQty.trim() || null,
-        timestamp_checkout: jakartaTime,
-      };
+      const formData = new FormData();
+      formData.append('id', String(idAbsen));
+      formData.append('name_store', nameStore);
+      formData.append('result', result.trim());
+      if (orderQty.trim()) formData.append('order_quantity', orderQty.trim());
+      if (billQty.trim()) formData.append('bill_quantity', billQty.trim());
+      formData.append('timestamp_checkout', jakartaTime);
 
-      const response = await axios.post<CheckoutResponse>(
-        'https://citrabarubusana.org/api/store-visit/check-out',
-        requestData,
-        { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } }
-      );
+      appendPhoto(formData, 'foto_display', fotoDisplayUri);
+      appendPhoto(formData, 'foto_pic_toko', fotoPicTokoUri);
 
-      if (response.data.code === 200 && response.data.status === 'success') {
-        Toast.show({ type: 'success', text1: 'Sukses', text2: response.data.message || 'Absen Checkout Toko berhasil!' });
+      const response = await fetch(`${BASE_URL}/api/store-visit/check-out`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+
+      const data: CheckoutResponse = await response.json();
+
+      if (response.ok && data.code === 200 && data.status === 'success') {
+        Toast.show({ type: 'success', text1: 'Sukses', text2: data.message || 'Absen Checkout Toko berhasil!' });
         navigation.navigate('Main');
       } else {
-        Toast.show({ type: 'error', text1: 'Error', text2: response.data.message || 'Absen checkout gagal' });
-      }
-    } catch (error) {
-      const axiosError = error as AxiosError<ErrorResponse>;
-      let errorMessage = 'Periksa Koneksi Internet Anda.';
-      if (axiosError.response) {
-        if (axiosError.response.status === 422) {
-          const data = axiosError.response.data;
-          errorMessage = data?.errors
-            ? Object.entries(data.errors).map(([f, m]) => `${f}: ${m.join(', ')}`).join('\n')
-            : data?.message || 'Validation error';
-        } else {
-          errorMessage = axiosError.response.data?.message || `Server error: ${axiosError.response.status}`;
+        let errorMessage = data.message || 'Absen checkout gagal';
+        if (data.errors) {
+          errorMessage = Object.entries(data.errors).map(([f, m]) => `${f}: ${m.join(', ')}`).join('\n');
         }
-      } else if (axiosError.request) {
-        errorMessage = 'Tidak dapat terhubung ke server.';
+        Toast.show({ type: 'error', text1: 'Error', text2: errorMessage });
       }
-      Toast.show({ type: 'error', text1: 'Error', text2: errorMessage });
+    } catch {
+      // fetch() hanya melempar error untuk masalah koneksi/jaringan
+      // (bukan untuk response HTTP non-2xx), jadi di titik ini aman
+      // diasumsikan sebagai masalah sinyal → simpan ke antrian offline.
+      await queueOffline();
     } finally {
       setIsLoading(false);
     }
   };
 
-  const isFormValid = Boolean(nameStore && addressStore.trim().length > 0 && result.trim().length > 0);
+  const isFormValid = Boolean(nameStore && result.trim().length > 0 && fotoDisplayUri && fotoPicTokoUri);
 
   return (
     <SafeAreaProvider>
@@ -282,6 +477,30 @@ const Checkout: React.FC<CheckoutProps> = ({ navigation, route }) => {
             </View>
           </View>
 
+          {/* ── BANNER ANTRIAN OFFLINE ── */}
+          {pendingCount > 0 && (
+            <View style={styles.syncBanner}>
+              <MaterialCommunityIcons
+                name={isOnline ? 'cloud-upload-outline' : 'cloud-off-outline'}
+                size={16}
+                color="#92400e"
+              />
+              <Text style={styles.syncBannerText}>
+                {pendingCount} checkout menunggu sinkronisasi
+                {!isOnline ? ' (tidak ada koneksi)' : ''}
+              </Text>
+              {isOnline && (
+                <TouchableOpacity onPress={handleSync} disabled={syncing} style={styles.syncBannerBtn}>
+                  {syncing ? (
+                    <ActivityIndicator size="small" color="#92400e" />
+                  ) : (
+                    <Text style={styles.syncBannerBtnText}>Sync</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {/* ── FORM CARD ── */}
           <View style={styles.formCard}>
             <View style={styles.cardHeader}>
@@ -296,21 +515,8 @@ const Checkout: React.FC<CheckoutProps> = ({ navigation, route }) => {
                 iconName="store-outline"
                 placeholder="Nama toko"
                 value={nameStore || ''}
-                onChangeText={() => {}}
+                onChangeText={() => { }}
                 editable={false}
-              />
-            </View>
-
-            {/* Alamat Toko */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>ALAMAT TOKO <Text style={styles.required}>*</Text></Text>
-              <IconInput
-                iconName="map-marker-outline"
-                placeholder="Masukkan alamat toko"
-                value={addressStore}
-                onChangeText={setAddressStore}
-                multiline
-                numberOfLines={3}
               />
             </View>
 
@@ -355,6 +561,32 @@ const Checkout: React.FC<CheckoutProps> = ({ navigation, route }) => {
               />
             </View>
 
+            {/* Foto Display Rak/Produk */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>FOTO DISPLAY RAK/PRODUK <Text style={styles.required}>*</Text></Text>
+              <PhotoPicker
+                uri={fotoDisplayUri}
+                onPick={() => pickPhoto(setFotoDisplayUri)}
+                onRemove={() => setFotoDisplayUri(null)}
+                label="Ambil Foto Display"
+                sublabel="Ketuk untuk membuka kamera"
+                iconName="image-frame"
+              />
+            </View>
+
+            {/* Foto Bersama PIC Toko */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>FOTO BERSAMA PIC TOKO <Text style={styles.required}>*</Text></Text>
+              <PhotoPicker
+                uri={fotoPicTokoUri}
+                onPick={() => pickPhoto(setFotoPicTokoUri)}
+                onRemove={() => setFotoPicTokoUri(null)}
+                label="Ambil Foto Bersama PIC"
+                sublabel="Ketuk untuk membuka kamera"
+                iconName="account-tie-outline"
+              />
+            </View>
+
             {/* Catatan wajib */}
             <View style={styles.noteRow}>
               <Text style={styles.required}>*</Text>
@@ -378,7 +610,9 @@ const Checkout: React.FC<CheckoutProps> = ({ navigation, route }) => {
           ) : (
             <View style={styles.incompleteHint}>
               <MaterialCommunityIcons name="information-outline" size={15} color="#cbd5e1" />
-              <Text style={styles.incompleteHintText}>Lengkapi alamat toko dan hasil kunjungan</Text>
+              <Text style={styles.incompleteHintText}>
+                Lengkapi hasil kunjungan, foto display, dan foto bersama PIC toko
+              </Text>
             </View>
           )}
         </ScrollView>
@@ -467,6 +701,18 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.3)',
   } as ViewStyle,
+
+  /* Sync banner */
+  syncBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fde68a',
+    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+  } as ViewStyle,
+  syncBannerText: { flex: 1, fontSize: 12, color: '#92400e', fontWeight: '600' } as TextStyle,
+  syncBannerBtn: {
+    backgroundColor: '#fde68a', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+  } as ViewStyle,
+  syncBannerBtnText: { fontSize: 11, fontWeight: '800', color: '#92400e' } as TextStyle,
 
   /* Form card */
   formCard: {
@@ -582,11 +828,14 @@ const styles = StyleSheet.create({
     gap: 6,
     justifyContent: 'center',
     paddingVertical: 8,
+    paddingHorizontal: 16,
   } as ViewStyle,
   incompleteHintText: {
     fontSize: 12,
     color: '#94a3b8',
     fontWeight: '500',
+    textAlign: 'center',
+    flexShrink: 1,
   } as TextStyle,
 });
 

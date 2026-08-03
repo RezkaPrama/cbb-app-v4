@@ -1,75 +1,204 @@
-import React, { useState, useMemo } from "react";
-import { 
-  NavigationContainer, 
-  DefaultTheme as NavigationDefaultTheme,
-  DarkTheme as NavigationDarkTheme
-} from '@react-navigation/native';
-import StackNavigator from "./StackNavigator";
-import { SafeAreaProvider } from "react-native-safe-area-context";
-import themeContext from '../constants/themeContext';
-import { COLORS } from "../constants/theme";
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import { useSelector } from 'react-redux';
 
-const RoutesBackup = () => {
-  
-  const [isDarkTheme, setIsDarkTheme] = useState(false);
-  
-  // useMemo untuk optimasi performa
-  const authContext = useMemo(() => ({
-    setDarkTheme: () => {
-      setIsDarkTheme(true);
-    },
-    setLightTheme: () => {
-      setIsDarkTheme(false);
-    }
-  }), []);
+// Import screens
+import OnBoardingScreen from '../screens/OnBoarding/OnBoardingScreen';
+import LoginScreen from '../screens/Auth/LoginScreen';
+import BottomNavigation from '../layout/BottomNavigation';
+import AbsenAdmin from '../screens/Absen/AbsenAdmin';
+import AbsenSales from '../screens/Absen/AbsenSales';
+import Checkin from '../screens/Absen/Checkin';
+import Checkout from '../screens/Absen/Checkout';
+import MappingToko from '../screens/Mapping/MappingToko';
+import ScanRack from '../screens/Scan/ScanRack';
+import ShelfScanner from '../screens/Scan/ShelfScanner';
+import ShelfForm from '../screens/Scan/ShelfForm';
+import AttendanceWFH from '../screens/Absen/AttendanceWFH';
+import AttendanceSiteVisitor from '../screens/Absen/AttendanceSiteVisitor';
+import TrackHistoryScreen from '../screens/Absen/TrackingHistoryScreen';
 
-  const CustomDefaultTheme = {
-    ...NavigationDefaultTheme,
-    colors: {
-      ...NavigationDefaultTheme.colors,
-      text: COLORS.text,
-      textLight: '#a19fa8',
-      title: COLORS.title,
-      background: '#FEF6F0',
-      background2: '#f5f5f5',
-      backgroundColor: '#fff',
-      card: COLORS.white,
-      cardBg: COLORS.white,
-      borderColor: COLORS.borderColor,
-      themeBg: "#F4F6FF",
-      bgGradient: ['#FFFBF6', '#FBE7DF'],
-    }
+// Type definitions untuk navigation
+export type RootStackParamList = {
+  OnBoarding: undefined;
+  Login: undefined;
+  Register: undefined;
+  Main: undefined; // Bottom Tab Navigator
+  AbsenAdmin: undefined;
+  AttendanceWFH: undefined;
+  AttendanceSiteVisitor: undefined;
+  MappingToko: undefined;
+  ScanRack: undefined;
+  ShelfScanner: undefined;
+  TrackHistoryScreen: undefined;
+   // ✅ FIX: tambahkan tipe params yang sesuai dengan ShelfFormScreenProps
+  ShelfForm: {
+    scannedSerial?: string;
+    scannedStore?: { pelanggan: string; namaToko: string };
+    manualMode?: boolean;
+    rackData?: {
+        type_rack?: 'Batang' | 'Wagon' | 'Tower' | 'Backwall' | '';  // ✅ tambah Backwall
+        size_rack?: 'Besar' | 'Kecil' | '';
+        brand_rack?: 'Nayla' | 'My Foot' | 'Parker' | 'Walton' | 'Stairway' | 'Salma' | '';
+        quota?: number;
+    };
   };
-  
-  const CustomDarkTheme = {
-    ...NavigationDarkTheme,
-    colors: {
-      ...NavigationDarkTheme.colors,
-      text: 'rgba(255, 255, 255, 0.7)',
-      textLight: 'rgba(255, 255, 255, 0.7)',
-      title: '#fff',
-      background: COLORS.darkBg,
-      background2: '#00092D',
-      backgroundColor: COLORS.darkBg,
-      card: '#3a4a91',
-      cardBg: "#0c1746",
-      borderColor: COLORS.darkBorder,
-      themeBg: "#00092D",
-      bgGradient: ['#2c3f6d', '#2c3f6d'],
-    }
+  AbsenSales: undefined;
+  Checkin: { visitCount: number };
+  Checkout: {
+    idAbsen: number;
+    nameStore: string;
+    visitCount: number;
   };
+};
 
-  const theme = isDarkTheme ? CustomDarkTheme : CustomDefaultTheme;
+// Type untuk Redux state
+interface RootState {
+  auth: {
+    isAuthenticated: boolean;
+  };
+}
+
+const Stack = createStackNavigator<RootStackParamList>();
+
+const Routes: React.FC = () => {
+  const isAuthenticated = useSelector((state: any) => state.auth.isAuthenticated);
 
   return (
-    <SafeAreaProvider>
-      <themeContext.Provider value={authContext}>
-        <NavigationContainer theme={theme}>
-          <StackNavigator />
-        </NavigationContainer>
-      </themeContext.Provider>
-    </SafeAreaProvider>
+    <NavigationContainer>
+      <Stack.Navigator
+        screenOptions={{
+          headerStyle: {
+            backgroundColor: '#6200ee',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontFamily: 'Poppins-SemiBold',
+          },
+        }}
+      >
+        {!isAuthenticated ? (
+          // Auth Stack - Tampil jika belum login
+          <>
+            <Stack.Screen 
+              name="OnBoarding" 
+              component={OnBoardingScreen}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="Login" 
+              component={LoginScreen}
+              options={{
+                headerShown: false,
+              }}
+            />
+          </>
+        ) : (
+          // Main App Stack - Tampil jika sudah login dengan Bottom Navigation
+          <>
+            {/* Bottom Tab Navigator sebagai screen utama */}
+            <Stack.Screen 
+              name="Main" 
+              component={BottomNavigation}
+              options={{
+                headerShown: false
+              }}
+            />
+            
+            {/* Screen-screen lain yang di-stack di atas Bottom Navigation */}
+            <Stack.Screen 
+              name="AbsenAdmin" 
+              component={AbsenAdmin}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="AttendanceWFH" 
+              component={AttendanceWFH}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="AttendanceSiteVisitor" 
+              component={AttendanceSiteVisitor}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="AbsenSales" 
+              component={AbsenSales}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="Checkin" 
+              component={Checkin}
+              options={{
+                headerShown: false,
+                title: 'Check In Toko',
+              }}
+            />
+            <Stack.Screen 
+              name="Checkout" 
+              component={Checkout}
+              options={{
+                headerShown: false,
+                title: 'Check Out Toko',
+              }}
+            />
+            <Stack.Screen 
+              name="MappingToko" 
+              component={MappingToko}
+              options={{
+                headerShown: false,
+                title: 'Mapping Toko',
+              }}
+            />
+            <Stack.Screen 
+              name="ScanRack" 
+              component={ScanRack}
+              options={{
+                headerShown: false,
+                title: 'Scan Rack',
+              }}
+            />
+            <Stack.Screen 
+              name="ShelfScanner" 
+              component={ShelfScanner}
+              options={{
+                headerShown: false,
+                title: 'Shelf Scanner',
+              }}
+            />
+            <Stack.Screen 
+              name="ShelfForm" 
+              component={ShelfForm}
+              options={{
+                headerShown: false,
+                title: 'Shelf Form',
+              }}
+            />
+            <Stack.Screen 
+              name="TrackHistoryScreen" 
+              component={TrackHistoryScreen}
+              options={{
+                headerShown: false,
+                title: 'Track History',
+              }}
+            />
+
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 };
 
-export default RoutesBackup;
+export default Routes;
