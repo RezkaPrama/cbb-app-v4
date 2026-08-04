@@ -282,6 +282,127 @@ interface CustomerPaymentSummary {
   jumlah_overdue: number;
 }
 
+const SO_BASE = '/sales-po';
+
+// ---------- TYPES ----------
+
+interface SalesOrderProductItem {
+  id_product: number;
+  barcode?: string | null;
+  product_name: string;
+  quantity: number;   // isi/pack
+  qty: number;         // jumlah pack dipesan
+  price_pack: number;
+  subtotal: number;
+  hpp_pcs?: number;
+  note?: string | null;
+}
+
+// Field-field ini PERSIS mengikuti apa yang dibaca SalesOrderController::store()
+interface CreateSalesOrderPayload {
+  date: string;                 // YYYY-MM-DD
+  id_jenis_barang?: number | string;
+  j_trans: string;              // PUTUS | RETUNABLE | KONSINYASI | COUNTER | COUNTER NON SPG
+  id_customer: string;
+  cust_name: string;
+  address_name?: string;
+  rt_rw?: string;
+  kel?: string;
+  kec?: string;
+  kota_kab?: string;
+  provinsi?: string;
+  discount_percentage?: number;
+  discount_percentage_2?: number;
+  discount_percentage_3?: number;
+  note?: string;
+  products: SalesOrderProductItem[];
+}
+
+interface SalesOrderCreateResponse {
+  code: string;
+  sales_order_id: number;
+}
+
+interface SalesOrderListItem {
+  id: number;
+  code: string;
+  date: string;
+  cust_name: string;
+  id_customer: string;
+  j_trans: string;
+  total_qty_pack: number;
+  bruto_amount: number;
+  netto_amount: number;
+  status: 'PENDING' | 'PROCESSED' | 'CANCELLED' | 'EXPIRED';
+  created_at: string;
+}
+
+interface SalesOrderDetailRow {
+  id: number;
+  id_product: number;
+  product_name: string;
+  barcode: string | null;
+  qty: number;
+  quantity_pack: number;
+  price_pack: number;
+  sub_total: number;
+  hpp: number | null;
+}
+
+interface SalesOrderDetail extends SalesOrderListItem {
+  details: SalesOrderDetailRow[];
+  note: string | null;
+}
+
+interface SalesOrderListResponse {
+  current_page: number;
+  last_page: number;
+  total: number;
+  data: SalesOrderListItem[];
+}
+
+interface CustomerAutofillResult {
+  idcust: string;
+  nama: string;
+  alamat?: string;
+  kelurahan?: string;
+  kecamatan?: string;
+  idkota?: string;
+  provinsi?: string;
+}
+
+interface CustomerAutofillResponse {
+  data: CustomerAutofillResult;
+  discounts: Record<string, number>;
+}
+
+interface CustomerSearchResult {
+  idcust: string;
+  nama: string;
+}
+
+interface CustomerSearchListResponse {
+  data: CustomerSearchResult[];
+}
+
+interface ArticleSearchResult {
+  id: number;
+  barcode: string | null;
+  name: string;
+  quantity: number;
+  price_sell: number | string;
+  color?: string;
+  size?: string;
+}
+
+interface StockCheckResponse {
+  stock: { saldo_akhir_dz: number; saldo_akhir_psg: number };
+  physical_pcs: number;
+  reserved_pcs: number;
+  available_pcs: number;
+  available_dz: number;
+}
+
 type QueryParams = Record<string, string | number | boolean>;
 
 // ============ API SERVICE CLASS ============
@@ -987,6 +1108,61 @@ class ApiService {
     }
   }
 
+  // ============ SALES ORDER (PO) APIs ============
+
+  async generateSalesOrderCode(): Promise<ApiResponse<{ code: string }>> {
+    return await this.makeRequest(`${SO_BASE}/generate-code`);
+  }
+
+  async searchSalesOrderCustomers(search: string): Promise<ApiResponse<CustomerSearchListResponse>> {
+    const queryString = new URLSearchParams({ search }).toString();
+    return await this.makeRequest(`${SO_BASE}/customers/search?${queryString}`);
+  }
+
+  async getSalesOrderCustomerDetail(idcust: string): Promise<ApiResponse<CustomerAutofillResponse>> {
+    return await this.makeRequest(`${SO_BASE}/customers/${idcust}`);
+  }
+
+  // Cari artikel untuk popup — reuse endpoint produk yang sudah ada (top-level, bukan di prefix sales-po)
+  async searchArticles(query: string): Promise<ApiResponse<{ products: ArticleSearchResult[] }>> {
+    const queryString = new URLSearchParams({ search: query, limit: '20', set_sell: '1' }).toString();
+    return await this.makeRequest(`/v1/products/search-for-send?${queryString}`);
+  }
+
+  async findArticleByBarcode(barcode: string): Promise<ApiResponse<{ product: ArticleSearchResult }>> {
+    return await this.makeRequest(`/v1/products/findByBarcode/${barcode}`);
+  }
+
+  // Stok tersedia (fisik - reserved dari PO PENDING lain), dalam PCS.
+  // Dipanggil per-produk saat hasil pencarian artikel muncul di popup —
+  // BUKAN saat form pertama kali dibuka.
+  async checkStock(productId: number): Promise<ApiResponse<StockCheckResponse>> {
+    return await this.makeRequest(`${SO_BASE}/reserved/${productId}`);
+  }
+
+  async getSalesOrderList(params: QueryParams = {}): Promise<ApiResponse<SalesOrderListResponse>> {
+    const queryString = new URLSearchParams(params as Record<string, string>).toString();
+    const endpoint = queryString ? `${SO_BASE}?${queryString}` : SO_BASE;
+    return await this.makeRequest(endpoint);
+  }
+
+  async getSalesOrderDetail(id: number): Promise<ApiResponse<SalesOrderDetail>> {
+    return await this.makeRequest(`${SO_BASE}/${id}`);
+  }
+
+  async createSalesOrder(payload: CreateSalesOrderPayload): Promise<ApiResponse<SalesOrderCreateResponse>> {
+    return await this.makeRequest(SO_BASE, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async cancelSalesOrder(id: number): Promise<ApiResponse<null>> {
+    return await this.makeRequest(`${SO_BASE}/${id}/cancel`, {
+      method: 'PUT',
+    });
+  }
+
   // ============ SALES PO APIs ============
   async getSalesPOs(params: QueryParams = {}): Promise<ApiResponse<SalesPOData[]>> {
     const queryString = new URLSearchParams(params as Record<string, string>).toString();
@@ -1255,4 +1431,17 @@ export type {
   MyPaymentsResponse,
   PaymentDetailResponse,
   CustomerPaymentSummary,
+  SalesOrderProductItem,
+  CreateSalesOrderPayload,
+  SalesOrderCreateResponse,
+  SalesOrderListItem,
+  SalesOrderDetailRow,
+  SalesOrderDetail,
+  SalesOrderListResponse,
+  CustomerAutofillResult,
+  CustomerAutofillResponse,
+  CustomerSearchResult,
+  CustomerSearchListResponse,
+  ArticleSearchResult,
+  StockCheckResponse,
 };

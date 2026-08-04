@@ -29,6 +29,7 @@ import { useDispatch } from 'react-redux';
 import { logout } from '../../redux/Store/authSlice';
 import HistorySales from '../../components/Banner/HistorySales';
 import BannerBayarPiutang from '../../components/Banner/BannerBayarPiutang';
+import SalesOrderPOBanner from '../../components/Banner/SalesOrderPOBanner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -258,6 +259,9 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                     <View style={styles.bannerRakWrapper}>
                         <BannerScanRack />
                     </View>
+
+                    {/* 4. Manajemen Rak CBB — navy, badge "Modul Baru v5", dua tombol */}
+                    <SalesOrderPOBanner />
 
                     {/* 3. bayar piutang — navy, badge "Modul Baru v5", dua tombol */}
                     <View style={styles.bannerRakWrapper}>
