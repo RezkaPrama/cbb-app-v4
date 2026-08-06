@@ -86,7 +86,7 @@ export default function SalesOrderListScreen({ navigation }: Props) {
     }
   };
 
-  const totalNetto = items.reduce((acc, cur) => acc + (Number(cur.netto_amount) || 0), 0);
+  const totalNetto = items.reduce((acc, cur) => acc + cur.netto_amount, 0);
 
   const renderItem = ({ item }: { item: SalesOrderListItem }) => {
     const isExpanded = expandedId === item.id;
@@ -113,7 +113,7 @@ export default function SalesOrderListScreen({ navigation }: Props) {
               <View style={[styles.statusBadge, statusBadgeStyle(item.status)]}>
                 <Text style={[styles.statusBadgeText, statusTextStyle(item.status)]}>{item.status}</Text>
               </View>
-              <Text style={styles.amountText}>{formatRupiah(Number(item.netto_amount) || 0)}</Text>
+              <Text style={styles.amountText}>{formatRupiah(item.netto_amount)}</Text>
             </View>
           </View>
 
@@ -138,13 +138,13 @@ export default function SalesOrderListScreen({ navigation }: Props) {
                   </View>
                 )}
                 <Text style={styles.rincianTitle}>RINCIAN ARTIKEL:</Text>
-                {detail.details.map((d) => (
+                {detail.details.map((d: SalesOrderDetail['details'][number]) => (
                   <View key={d.id} style={styles.allocRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.allocFaktur}>{d.product_name}</Text>
                       <Text style={styles.metaText}>{d.barcode} • {d.quantity_pack} pack</Text>
                     </View>
-                    <Text style={styles.allocAmount}>{formatRupiah(Number(d.sub_total) || 0)}</Text>
+                    <Text style={styles.allocAmount}>{formatRupiah(d.sub_total)}</Text>
                   </View>
                 ))}
 

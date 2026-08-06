@@ -403,6 +403,34 @@ interface StockCheckResponse {
   available_dz: number;
 }
 
+// Tambahkan interface baru (taruh dekat interface SO_BASE lainnya)
+interface GenerateCodeRawResponse {
+  success: boolean;
+  code: string;
+  message?: string;
+}
+
+interface CustomerSearchRawResponse {
+  success: boolean;
+  data: CustomerSearchResult[];
+  message?: string;
+}
+
+interface CustomerDetailRawResponse {
+  success: boolean;
+  data: CustomerAutofillResult;
+  discounts: Record<string, number>;
+  message?: string;
+}
+
+interface CreateSalesOrderRawResponse {
+  success: boolean;
+  message?: string;
+  code: string;
+  sales_order_id: number;
+  errors?: Record<string, string[]> | null;
+}
+
 type QueryParams = Record<string, string | number | boolean>;
 
 // ============ API SERVICE CLASS ============
@@ -1110,17 +1138,17 @@ class ApiService {
 
   // ============ SALES ORDER (PO) APIs ============
 
-  async generateSalesOrderCode(): Promise<ApiResponse<{ code: string }>> {
-    return await this.makeRequest(`${SO_BASE}/generate-code`);
+  async generateSalesOrderCode(): Promise<GenerateCodeRawResponse> {
+    return (await this.makeRequest(`${SO_BASE}/generate-code`)) as unknown as GenerateCodeRawResponse;
   }
 
-  async searchSalesOrderCustomers(search: string): Promise<ApiResponse<CustomerSearchListResponse>> {
+  async searchSalesOrderCustomers(search: string): Promise<CustomerSearchRawResponse> {
     const queryString = new URLSearchParams({ search }).toString();
-    return await this.makeRequest(`${SO_BASE}/customers/search?${queryString}`);
+    return (await this.makeRequest(`${SO_BASE}/customers/search?${queryString}`)) as unknown as CustomerSearchRawResponse;
   }
 
-  async getSalesOrderCustomerDetail(idcust: string): Promise<ApiResponse<CustomerAutofillResponse>> {
-    return await this.makeRequest(`${SO_BASE}/customers/${idcust}`);
+  async getSalesOrderCustomerDetail(idcust: string): Promise<CustomerDetailRawResponse> {
+    return (await this.makeRequest(`${SO_BASE}/customers/${idcust}`)) as unknown as CustomerDetailRawResponse;
   }
 
   // Cari artikel untuk popup — reuse endpoint produk yang sudah ada (top-level, bukan di prefix sales-po)
@@ -1150,11 +1178,11 @@ class ApiService {
     return await this.makeRequest(`${SO_BASE}/${id}`);
   }
 
-  async createSalesOrder(payload: CreateSalesOrderPayload): Promise<ApiResponse<SalesOrderCreateResponse>> {
-    return await this.makeRequest(SO_BASE, {
+  async createSalesOrder(payload: CreateSalesOrderPayload): Promise<CreateSalesOrderRawResponse> {
+    return (await this.makeRequest(SO_BASE, {
       method: 'POST',
       body: JSON.stringify(payload),
-    });
+    })) as unknown as CreateSalesOrderRawResponse;
   }
 
   async cancelSalesOrder(id: number): Promise<ApiResponse<null>> {
