@@ -32,14 +32,11 @@ export default function SelectedCustomerAutofillCard({ customer, onChangeCustome
       <ReadonlyField label="Alamat Pelanggan" value={customer.alamat} />
 
       <View style={styles.row}>
-        <ReadonlyField label="Desa/Kel" value={customer.kelurahan} />
+        <ReadonlyField label="Kelurahan" value={customer.kelurahan} />
         <ReadonlyField label="Kecamatan" value={customer.kecamatan} />
       </View>
 
-      <View style={styles.row}>
-        <ReadonlyField label="Kota/Kab" value={customer.idkota} />
-        <ReadonlyField label="Provinsi" value={customer.provinsi} />
-      </View>
+      <ReadonlyField label="Provinsi" value={customer.provinsi} />
     </View>
   );
 }
