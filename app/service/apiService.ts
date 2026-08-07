@@ -1161,7 +1161,7 @@ class ApiService {
   // Cari artikel untuk popup — reuse endpoint produk yang sudah ada (top-level, bukan di prefix sales-po)
   async searchArticles(query: string): Promise<ApiResponse<{ products: ArticleSearchResult[] }>> {
     const queryString = new URLSearchParams({ search: query, limit: '20', set_sell: '1' }).toString();
-    return await this.makeRequest(`/v1/products/search-for-send?${queryString}`);
+    return await this.makeRequest(`/v1/products/search-for-mobile?${queryString}`);
   }
 
   async findArticleByBarcode(barcode: string): Promise<ApiResponse<{ product: ArticleSearchResult }>> {

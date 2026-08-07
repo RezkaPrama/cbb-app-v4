@@ -1,7 +1,9 @@
-import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-// npm install @react-native-picker/picker (kalau belum ada di project)
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+// npm install @react-native-picker/picker @react-native-community/datetimepicker (kalau belum ada di project)
+import { Ionicons } from '@expo/vector-icons';
 import { formatRupiah, formatDigitsWithDots, digitsOnly } from '../utils/formatRupiah';
 import type { BankAccountPiutang, ReturPiutang } from '../../../service/apiService';
 
@@ -56,6 +58,25 @@ export default function PaymentDetailForm(props: Props) {
   } = props;
 
   const needsBankAccount = paymentMethod === 'Transfer' || paymentMethod === 'Giro';
+
+  // ── Date picker untuk Jatuh Tempo Giro ──
+  const [showGiroDatePicker, setShowGiroDatePicker] = useState(false);
+
+  const giroDateValue = tglJatuhTempoGiro ? new Date(tglJatuhTempoGiro) : new Date();
+
+  const handleGiroDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    // Android: picker otomatis tertutup sendiri setelah pilih/cancel
+    if (Platform.OS === 'android') setShowGiroDatePicker(false);
+
+    if (event.type === 'dismissed' || !selectedDate) return;
+
+    const yyyy = selectedDate.getFullYear();
+    const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(selectedDate.getDate()).padStart(2, '0');
+    onChangeTglJatuhTempoGiro(`${yyyy}-${mm}-${dd}`);
+
+    if (Platform.OS === 'ios') setShowGiroDatePicker(false);
+  };
 
   return (
     <View style={{ gap: 12 }}>
@@ -118,7 +139,25 @@ export default function PaymentDetailForm(props: Props) {
             </View>
             <View style={styles.col}>
               <Text style={styles.label}>JATUH TEMPO *</Text>
-              <TextInput style={styles.input} value={tglJatuhTempoGiro} onChangeText={onChangeTglJatuhTempoGiro} placeholder="YYYY-MM-DD" />
+              <TouchableOpacity
+                style={styles.dateInputWrap}
+                onPress={() => setShowGiroDatePicker(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={tglJatuhTempoGiro ? styles.dateInputText : styles.dateInputPlaceholder}>
+                  {tglJatuhTempoGiro || 'YYYY-MM-DD'}
+                </Text>
+                <Ionicons name="calendar-outline" size={16} color="#64748b" />
+              </TouchableOpacity>
+
+              {showGiroDatePicker && (
+                <DateTimePicker
+                  value={giroDateValue}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleGiroDateChange}
+                />
+              )}
             </View>
           </View>
         </View>
@@ -206,6 +245,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
+  dateInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  dateInputText: { fontSize: 12, fontWeight: '600', color: '#1e293b' },
+  dateInputPlaceholder: { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
   amountHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   maxText: { fontSize: 9, fontWeight: '700', color: '#94a3b8' },
   amountInputWrap: {
