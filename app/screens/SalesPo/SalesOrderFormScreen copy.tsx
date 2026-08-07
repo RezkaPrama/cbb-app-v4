@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator,
-    KeyboardAvoidingView, Platform, Alert, TextInput, LayoutAnimation, UIManager,
+    KeyboardAvoidingView, Platform, Alert, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -23,10 +23,6 @@ import CartTable from './components/CartTable';
 import DiscountBreakdownBox from './components/DiscountBreakdownBox';
 import POSuccessModal from './components/POSuccessModal';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
 export interface CartItem {
     id_product: number;
     barcode: string | null;
@@ -47,7 +43,7 @@ const todayISO = () => new Date().toISOString().split('T')[0];
 
 // TODO: sesuaikan sumber pilihan Jenis Transaksi & Jenis Barang kalau ternyata
 // harus dinamis dari API (mis. apiService.getJenisBarangList()).
-const J_TRANS_OPTIONS = ['PUTUS', 'RETUNABLE', 'KONSINYASI', 'ISOCK'];
+const J_TRANS_OPTIONS = ['PUTUS', 'RETUNABLE', 'KONSINYASI', 'COUNTER', 'COUNTER NON SPG'];
 
 export default function SalesOrderFormScreen({ navigation }: Props) {
     // --- Header PO fields ---
@@ -80,7 +76,6 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
     // --- Cart / detail artikel ---
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [showArticleModal, setShowArticleModal] = useState(false);
-    const [flashProductId, setFlashProductId] = useState<number | null>(null);
 
     // --- Diskon & catatan ---
     const [diskon1, setDiskon1] = useState(0);
@@ -143,9 +138,6 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
 
     // --- Cart handlers ---
     const handlePickArticle = (article: PickedArticle) => {
-        // Transisi halus saat baris baru masuk / baris existing bergeser posisi
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-
         setCartItems((prev) => {
             const existing = prev.find((i) => i.id_product === article.id_product);
             if (existing) {
@@ -165,10 +157,6 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
                 available_pcs: article.available_pcs,
             }];
         });
-
-        // Nyalakan flash highlight untuk baris ini, matikan lagi setelah animasinya selesai
-        setFlashProductId(article.id_product);
-        setTimeout(() => setFlashProductId(null), 750);
     };
 
     const handleUpdateQty = (id_product: number, delta: number) => {
@@ -234,7 +222,7 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
             address_name: selectedCustomer.alamat,
             kel: selectedCustomer.kelurahan,
             kec: selectedCustomer.kecamatan,
-            kota_kab: selectedCustomer.kelurahan,
+            kota_kab: selectedCustomer.idkota,
             provinsi: selectedCustomer.provinsi,
             discount_percentage: diskon1,
             discount_percentage_2: diskon2,
@@ -379,12 +367,7 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
                         </View>
 
                         <View style={{ marginTop: 10 }}>
-                            <CartTable
-                                items={cartItems}
-                                onUpdateQty={handleUpdateQty}
-                                onRemove={handleRemoveItem}
-                                flashProductId={flashProductId}
-                            />
+                            <CartTable items={cartItems} onUpdateQty={handleUpdateQty} onRemove={handleRemoveItem} />
                         </View>
 
                         <View style={{ marginTop: 12 }}>

@@ -431,6 +431,13 @@ interface CreateSalesOrderRawResponse {
   errors?: Record<string, string[]> | null;
 }
 
+interface StockCheckMultipleItem {
+  physical_pcs: number;
+  reserved_pcs: number;
+  available_pcs: number;
+  available_dz: number;
+}
+
 type QueryParams = Record<string, string | number | boolean>;
 
 // ============ API SERVICE CLASS ============
@@ -1164,8 +1171,15 @@ class ApiService {
   // Stok tersedia (fisik - reserved dari PO PENDING lain), dalam PCS.
   // Dipanggil per-produk saat hasil pencarian artikel muncul di popup —
   // BUKAN saat form pertama kali dibuka.
-  async checkStock(productId: number): Promise<ApiResponse<StockCheckResponse>> {
-    return await this.makeRequest(`${SO_BASE}/reserved/${productId}`);
+  // async checkStock(productId: number): Promise<ApiResponse<StockCheckResponse>> {
+  //   return await this.makeRequest(`${SO_BASE}/reserved/${productId}`);
+  // }
+
+  async checkStockMultiple(productIds: number[]): Promise<ApiResponse<Record<number, StockCheckMultipleItem>>> {
+    return await this.makeRequest(`${SO_BASE}/reserved-multiple`, {
+      method: 'POST',
+      body: JSON.stringify({ product_ids: productIds }),
+    });
   }
 
   async getSalesOrderList(params: QueryParams = {}): Promise<ApiResponse<SalesOrderListResponse>> {

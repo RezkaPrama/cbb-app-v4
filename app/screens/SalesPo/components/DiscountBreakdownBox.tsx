@@ -55,10 +55,10 @@ export default function DiscountBreakdownBox({
         <View style={{ flex: 1 }}>
           <Text style={styles.inputLabel}>Diskon 1 (%)</Text>
           <TextInput
-            style={styles.discInput}
+            style={[styles.discInput, styles.discInputDisabled]}
             keyboardType="numeric"
             value={String(diskon1)}
-            onChangeText={(v) => onChangeDiskon1(parseFloat(v) || 0)}
+            editable={false}
           />
         </View>
         <View style={{ flex: 1 }}>
@@ -101,5 +101,8 @@ const styles = StyleSheet.create({
   discInput: {
     borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, paddingVertical: 8,
     fontSize: 12, fontWeight: '700', color: '#0f172a', textAlign: 'center', fontFamily: 'monospace',
+  },
+  discInputDisabled: {
+    backgroundColor: '#f1f5f9', borderColor: '#e2e8f0', color: '#64748b',
   },
 });

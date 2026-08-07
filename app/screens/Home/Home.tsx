@@ -244,21 +244,8 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                         <SearchBar />
                     </View>
 
-                    {/* 1. Mapping Toko — oranye pastel */}
-                    <BannerMapping />
-
                     {/* 2. Absen Sales — biru gelap + dot grid */}
                     <BannerAbsenSales />
-
-                    {/* 4. Manajemen Rak CBB — navy, badge "Modul Baru v5", dua tombol */}
-                    <View style={styles.bannerRakWrapper}>
-                        <HistorySales />
-                    </View>
-
-                    {/* 3. Manajemen Rak CBB — navy, badge "Modul Baru v5", dua tombol */}
-                    <View style={styles.bannerRakWrapper}>
-                        <BannerScanRack />
-                    </View>
 
                     {/* 4. Manajemen Rak CBB — navy, badge "Modul Baru v5", dua tombol */}
                     <SalesOrderPOBanner />
@@ -267,6 +254,19 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                     <View style={styles.bannerRakWrapper}>
                         <BannerBayarPiutang />
                     </View>
+
+                    {/* 3. Manajemen Rak CBB — navy, badge "Modul Baru v5", dua tombol */}
+                    <View style={styles.bannerRakWrapper}>
+                        <BannerScanRack />
+                    </View>  
+
+                    {/* 4. Manajemen Rak CBB — navy, badge "Modul Baru v5", dua tombol */}
+                    <View style={styles.bannerRakWrapper}>
+                        <HistorySales />
+                    </View>
+
+                    {/* 1. Mapping Toko — oranye pastel */}
+                    <BannerMapping /> 
 
                     {/* 4. Section Label: Informasi Absensi */}
                     <View style={[GlobalStyleSheet.container as any, { paddingBottom: 0 }]}>
