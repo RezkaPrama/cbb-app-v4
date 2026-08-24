@@ -47,7 +47,7 @@ const todayISO = () => new Date().toISOString().split('T')[0];
 
 // TODO: sesuaikan sumber pilihan Jenis Transaksi & Jenis Barang kalau ternyata
 // harus dinamis dari API (mis. apiService.getJenisBarangList()).
-const J_TRANS_OPTIONS = ['PUTUS', 'RETUNABLE', 'KONSINYASI', 'ISOCK'];
+const J_TRANS_OPTIONS = ['PUTUS', 'RETUNABLE', 'KONSINYASI', 'COUNTER', 'COUNTER NON SPG'];
 
 export default function SalesOrderFormScreen({ navigation }: Props) {
     // --- Header PO fields ---
@@ -176,14 +176,8 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
             if (item.id_product !== id_product) return item;
             const newQty = Math.max(1, item.qty + delta);
 
-            // Validasi terhadap stok tersedia yang diketahui saat artikel dipilih (satuan: pcs)
-            if (item.available_pcs !== undefined) {
-                const requestedPcs = newQty * (item.quantity || 1);
-                if (requestedPcs > item.available_pcs) {
-                    Alert.alert('Stok Tidak Cukup', `Stok tersedia untuk ${item.product_name} tidak mencukupi.`);
-                    return item;
-                }
-            }
+            // Qty boleh melebihi stok tersedia (indent/backorder) — tidak lagi diblokir.
+            // Info available_pcs tetap dibawa buat ditampilkan sebagai warning di CartTable.
 
             return { ...item, qty: newQty, subtotal: newQty * item.price_pack };
         }));
@@ -234,7 +228,7 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
             address_name: selectedCustomer.alamat,
             kel: selectedCustomer.kelurahan,
             kec: selectedCustomer.kecamatan,
-            kota_kab: selectedCustomer.kelurahan,
+            kota_kab: selectedCustomer.idkota,
             provinsi: selectedCustomer.provinsi,
             discount_percentage: diskon1,
             discount_percentage_2: diskon2,

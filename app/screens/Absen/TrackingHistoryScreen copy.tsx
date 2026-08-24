@@ -6,11 +6,13 @@ import {
     TouchableOpacity,
     StyleSheet,
     Animated,
+
     ScrollView,
     TextInput,
     Platform,
     ActivityIndicator,
     RefreshControl,
+    FlatList,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
@@ -20,6 +22,7 @@ import { fetchVisitHistoryByDate, VisitHistoryItem } from '../../redux/Store/sto
 import { getDataLara } from '../../utils/asyncStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -176,216 +179,208 @@ export default function TrackingHistoryScreen() {
 
     // ─────────────────────────────────────────────────────────────────────────
     return (
-        <Animated.View style={[styles.wrapper, { opacity: fadeAnim }]}>
+        <SafeAreaProvider>
+            <SafeAreaView style={styles.wrapper} edges={['bottom']}>
+                <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
 
-            {/* ── Header ───────────────────────────────────────────────────── */}
-            <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                    <TouchableOpacity
-                        onPress={() => navigation.goBack()}
-                        style={styles.backBtn}
-                        activeOpacity={0.7}
-                    >
-                        <FeatherIcon name="chevron-left" size={16} color="#64748b" />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Histori GPS Tracking</Text>
-                </View>
-                <View style={styles.headerBadge}>
-                    <Text style={styles.headerBadgeText}>Grup Sales</Text>
-                </View>
-            </View>
-
-            {/* ── Scrollable Content ────────────────────────────────────────── */}
-            <ScrollView
-                style={styles.scrollView}
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={() => loadVisits(formatDateForApi(trackingDate), true)}
-                        tintColor="#2563eb"
-                    />
-                }
-            >
-                {/* User Info Card */}
-                <View style={styles.userCard}>
-                    <View style={styles.userCardWatermark}>
-                        <FeatherIcon name="map" size={80} color="#fff" />
-                    </View>
-                    <View style={styles.userCardInner}>
-                        <View style={styles.pulseRow}>
-                            <View style={styles.pulseDot} />
-                            <Text style={styles.userIdText}>
-                                Salesman ID: {userId ?? '-'}
-                            </Text>
+                    {/* ── Header ── */}
+                    <View style={styles.header}>
+                        <View style={styles.headerLeft}>
+                            <TouchableOpacity
+                                onPress={() => navigation.goBack()}
+                                style={styles.backBtn}
+                                activeOpacity={0.7}
+                            >
+                                <FeatherIcon name="chevron-left" size={16} color="#64748b" />
+                            </TouchableOpacity>
+                            <Text style={styles.headerTitle}>Histori GPS Tracking</Text>
                         </View>
-                        <Text style={styles.fullName}>{fullName ?? '-'}</Text>
-                        {/* Ganti TextInput tanggal dengan ini */}
-                        <Text style={styles.filterLabel}>Filter Tanggal:</Text>
-                        <TouchableOpacity
-                            style={styles.dateBtn}
-                            onPress={() => setShowDatePicker(true)}
-                            activeOpacity={0.8}
-                        >
-                            <FeatherIcon name="calendar" size={12} color="#38bdf8" />
-                            <Text style={styles.dateBtnText}>
-                                {formatDateDisplay(trackingDate)}
-                            </Text>
-                        </TouchableOpacity>
+                        <View style={styles.headerBadge}>
+                            <Text style={styles.headerBadgeText}>Grup Sales</Text>
+                        </View>
+                    </View>
 
-                        {showDatePicker && (
-                            <DateTimePicker
-                                value={trackingDate}
-                                mode="date"
-                                display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-                                maximumDate={new Date()}
-                                onChange={(event, selectedDate) => {
-                                    setShowDatePicker(Platform.OS === 'ios'); // iOS tetap terbuka
-                                    if (event.type === 'set' && selectedDate) {
-                                        setTrackingDate(selectedDate);
-                                        setPhoneSelectedVisitId(null);
-                                    }
-                                }}
+                    <FlatList
+                        data={loading || error ? [] : phoneVisits}
+                        keyExtractor={(item) => String(item.id)}
+                        contentContainerStyle={styles.scrollContent}
+                        showsVerticalScrollIndicator={false}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={() => loadVisits(formatDateForApi(trackingDate), true)}
+                                tintColor="#2563eb"
                             />
-                        )}
-                    </View>
-                </View>
+                        }
+                        ListHeaderComponent={
+                            <>
+                                {/* User Info Card */}
+                                <View style={styles.userCard}>
+                                    <View style={styles.userCardWatermark}>
+                                        <FeatherIcon name="map" size={80} color="#fff" />
+                                    </View>
+                                    <View style={styles.userCardInner}>
+                                        <View style={styles.pulseRow}>
+                                            <View style={styles.pulseDot} />
+                                            <Text style={styles.userIdText}>
+                                                Salesman ID: {userId ?? '-'}
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.fullName}>{fullName ?? '-'}</Text>
+                                        <Text style={styles.filterLabel}>Filter Tanggal:</Text>
+                                        <TouchableOpacity
+                                            style={styles.dateBtn}
+                                            onPress={() => setShowDatePicker(true)}
+                                            activeOpacity={0.8}
+                                        >
+                                            <FeatherIcon name="calendar" size={12} color="#38bdf8" />
+                                            <Text style={styles.dateBtnText}>
+                                                {formatDateDisplay(trackingDate)}
+                                            </Text>
+                                        </TouchableOpacity>
 
-                {/* Section Header Map */}
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>
-                        Rute Map Leaflet ({loading ? '…' : totalStops})
-                    </Text>
-                    <Text style={styles.checkoutCount}>
-                        {loading ? '-/-' : `${checkoutCount}/${totalStops} Checkout`}
-                    </Text>
-                </View>
+                                        {showDatePicker && (
+                                            <DateTimePicker
+                                                value={trackingDate}
+                                                mode="date"
+                                                display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
+                                                maximumDate={new Date()}
+                                                onChange={(event, selectedDate) => {
+                                                    setShowDatePicker(Platform.OS === 'ios');
+                                                    if (event.type === 'set' && selectedDate) {
+                                                        setTrackingDate(selectedDate);
+                                                        setPhoneSelectedVisitId(null);
+                                                    }
+                                                }}
+                                            />
+                                        )}
+                                    </View>
+                                </View>
 
-                {/* Leaflet Map (via WebView) */}
-                <View style={styles.mapContainer}>
-                    <LeafletMapView
-                        locations={phoneVisits}
-                        selectedLocationId={phoneSelectedVisitId}
-                        onSelectLocation={(id) => setPhoneSelectedVisitId(id)}
-                        theme="light"
-                    />
-                </View>
+                                {/* Section Header Map */}
+                                <View style={styles.sectionHeader}>
+                                    <Text style={styles.sectionTitle}>
+                                        Rute Map Leaflet ({loading ? '…' : totalStops})
+                                    </Text>
+                                    <Text style={styles.checkoutCount}>
+                                        {loading ? '-/-' : `${checkoutCount}/${totalStops} Checkout`}
+                                    </Text>
+                                </View>
 
-                {/* Loading / Error / Visit List */}
-                {loading ? (
-                    <View style={styles.emptyState}>
-                        <ActivityIndicator size="small" color="#2563eb" />
-                        <Text style={[styles.emptySubtitle, { marginTop: 8 }]}>
-                            Memuat data kunjungan…
-                        </Text>
-                    </View>
-                ) : error ? (
-                    <View style={styles.emptyState}>
-                        <FeatherIcon name="alert-circle" size={32} color="#fca5a5" style={{ marginBottom: 8 }} />
-                        <Text style={[styles.emptyTitle, { color: '#ef4444' }]}>Gagal Memuat</Text>
-                        <Text style={styles.emptySubtitle}>{error}</Text>
-                        <TouchableOpacity
-                            onPress={() => loadVisits(formatDateForApi(trackingDate))}
-                            style={styles.retryBtn}
-                            activeOpacity={0.8}
-                        >
-                            <Text style={styles.retryText}>Coba Lagi</Text>
-                        </TouchableOpacity>
-                    </View>
-                ) : (
-                    <View style={styles.visitList}>
-                        {phoneVisits.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <FeatherIcon
-                                    name="map"
-                                    size={32}
-                                    color="#cbd5e1"
-                                    style={{ marginBottom: 8 }}
-                                />
-                                <Text style={styles.emptyTitle}>Hari Tanpa Kunjungan</Text>
-                                <Text style={styles.emptySubtitle}>
-                                    Data GPS/check-in kosong untuk tanggal ini.
-                                </Text>
-                            </View>
-                        ) : (
-                            phoneVisits.map((v, i) => {
-                                const isSelected = phoneSelectedVisitId === v.id;
-                                return (
-                                    <TouchableOpacity
-                                        key={v.id}
-                                        onPress={() => setPhoneSelectedVisitId(v.id)}
-                                        activeOpacity={0.8}
-                                        style={[
-                                            styles.visitCard,
-                                            isSelected && styles.visitCardSelected,
-                                        ]}
-                                    >
-                                        <View style={styles.visitRow}>
-                                            <View style={styles.visitIndex}>
-                                                <Text style={styles.visitIndexText}>{i + 1}</Text>
-                                            </View>
+                                {/* Leaflet Map */}
+                                <View style={styles.mapContainer}>
+                                    <LeafletMapView
+                                        locations={phoneVisits}
+                                        selectedLocationId={phoneSelectedVisitId}
+                                        onSelectLocation={(id) => setPhoneSelectedVisitId(id)}
+                                        theme="light"
+                                    />
+                                </View>
 
-                                            <View style={styles.visitInfo}>
-                                                <View style={styles.visitTopRow}>
-                                                    <Text
-                                                        style={styles.visitStoreName}
-                                                        numberOfLines={1}
-                                                    >
-                                                        {v.name_store}
-                                                    </Text>
-                                                    <Text style={styles.visitTime}>
-                                                        {formatJakartaTime(v.timestamp_checkin)}
-                                                    </Text>
-                                                </View>
+                                {/* Loading / Error state */}
+                                {loading && (
+                                    <View style={styles.emptyState}>
+                                        <ActivityIndicator size="small" color="#2563eb" />
+                                        <Text style={[styles.emptySubtitle, { marginTop: 8 }]}>
+                                            Memuat data kunjungan…
+                                        </Text>
+                                    </View>
+                                )}
+                                {error && !loading && (
+                                    <View style={styles.emptyState}>
+                                        <FeatherIcon name="alert-circle" size={32} color="#fca5a5" style={{ marginBottom: 8 }} />
+                                        <Text style={[styles.emptyTitle, { color: '#ef4444' }]}>Gagal Memuat</Text>
+                                        <Text style={styles.emptySubtitle}>{error}</Text>
+                                        <TouchableOpacity
+                                            onPress={() => loadVisits(formatDateForApi(trackingDate))}
+                                            style={styles.retryBtn}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Text style={styles.retryText}>Coba Lagi</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
 
-                                                <Text style={styles.visitAddress} numberOfLines={1}>
-                                                    {v.address_store}
+                                {/* Label section list — hanya tampil kalau ada data */}
+                                {!loading && !error && phoneVisits.length > 0 && (
+                                    <View style={[styles.sectionHeader, { marginTop: 4 }]}>
+                                        <Text style={styles.sectionTitle}>Daftar Kunjungan</Text>
+                                    </View>
+                                )}
+                            </>
+                        }
+                        ListEmptyComponent={
+                            !loading && !error ? (
+                                <View style={styles.emptyState}>
+                                    <FeatherIcon name="map" size={32} color="#cbd5e1" style={{ marginBottom: 8 }} />
+                                    <Text style={styles.emptyTitle}>Hari Tanpa Kunjungan</Text>
+                                    <Text style={styles.emptySubtitle}>
+                                        Data GPS/check-in kosong untuk tanggal ini.
+                                    </Text>
+                                </View>
+                            ) : null
+                        }
+                        renderItem={({ item: v, index: i }) => {
+                            const isSelected = phoneSelectedVisitId === v.id;
+                            return (
+                                <TouchableOpacity
+                                    key={v.id}
+                                    onPress={() => setPhoneSelectedVisitId(v.id)}
+                                    activeOpacity={0.8}
+                                    style={[
+                                        styles.visitCard,
+                                        isSelected && styles.visitCardSelected,
+                                    ]}
+                                >
+                                    <View style={styles.visitRow}>
+                                        <View style={styles.visitIndex}>
+                                            <Text style={styles.visitIndexText}>{i + 1}</Text>
+                                        </View>
+                                        <View style={styles.visitInfo}>
+                                            <View style={styles.visitTopRow}>
+                                                <Text style={styles.visitStoreName} numberOfLines={1}>
+                                                    {v.name_store}
                                                 </Text>
-
-                                                <View style={styles.visitFooter}>
-                                                    <View
-                                                        style={[
-                                                            styles.statusBadge,
-                                                            v.timestamp_checkout
-                                                                ? styles.statusClosed
-                                                                : styles.statusActive,
-                                                        ]}
-                                                    >
-                                                        <Text
-                                                            style={[
-                                                                styles.statusText,
-                                                                v.timestamp_checkout
-                                                                    ? styles.statusTextClosed
-                                                                    : styles.statusTextActive,
-                                                            ]}
-                                                        >
-                                                            {v.timestamp_checkout ? 'Closed' : 'Active'}
-                                                        </Text>
-                                                    </View>
-
-                                                    {v.timestamp_checkout && (
-                                                        <Text style={styles.visitCheckoutTime}>
-                                                            Checkout {formatJakartaTime(v.timestamp_checkout)}
-                                                        </Text>
-                                                    )}
-
-                                                    {v.result ? (
-                                                        <Text style={styles.visitResult} numberOfLines={1}>
-                                                            Result: "{v.result}"
-                                                        </Text>
-                                                    ) : null}
+                                                <Text style={styles.visitTime}>
+                                                    {formatJakartaTime(v.timestamp_checkin)}
+                                                </Text>
+                                            </View>
+                                            <Text style={styles.visitAddress} numberOfLines={1}>
+                                                {v.address_store}
+                                            </Text>
+                                            <View style={styles.visitFooter}>
+                                                <View style={[
+                                                    styles.statusBadge,
+                                                    v.timestamp_checkout ? styles.statusClosed : styles.statusActive,
+                                                ]}>
+                                                    <Text style={[
+                                                        styles.statusText,
+                                                        v.timestamp_checkout ? styles.statusTextClosed : styles.statusTextActive,
+                                                    ]}>
+                                                        {v.timestamp_checkout ? 'Closed' : 'Active'}
+                                                    </Text>
                                                 </View>
+                                                {v.timestamp_checkout && (
+                                                    <Text style={styles.visitCheckoutTime}>
+                                                        Checkout {formatJakartaTime(v.timestamp_checkout)}
+                                                    </Text>
+                                                )}
+                                                {v.result ? (
+                                                    <Text style={styles.visitResult} numberOfLines={1}>
+                                                        Result: "{v.result}"
+                                                    </Text>
+                                                ) : null}
                                             </View>
                                         </View>
-                                    </TouchableOpacity>
-                                );
-                            })
-                        )}
-                    </View>
-                )}
-            </ScrollView>
-        </Animated.View>
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        }}
+                        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+                    />
+                </Animated.View>
+            </SafeAreaView>
+        </SafeAreaProvider>
     );
 }
 

@@ -92,9 +92,16 @@ function CartRow({ item, onUpdateQty, onRemove, flash }: CartRowProps) {
           <Text style={styles.itemName} numberOfLines={1}>{item.product_name}</Text>
           <Text style={styles.itemMeta}>
             {item.barcode} • {formatRupiah(item.price_pack)}
-            {item.available_pcs !== undefined && (
-              <Text style={styles.stockHint}>  (Tersedia {Math.floor(item.available_pcs / (item.quantity || 1))} pack)</Text>
-            )}
+            {item.available_pcs !== undefined && (() => {
+              const requestedPcs = item.qty * (item.quantity || 1);
+              const isShort = requestedPcs > item.available_pcs;
+              const availablePack = Math.floor(item.available_pcs / (item.quantity || 1));
+              return isShort ? (
+                <Text style={styles.stockHintWarn}>  (Stok kurang, tersedia {availablePack} pack)</Text>
+              ) : (
+                <Text style={styles.stockHint}>  (Tersedia {availablePack} pack)</Text>
+              );
+            })()}
           </Text>
         </View>
 
@@ -128,6 +135,7 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 11.5, fontWeight: '800', color: '#0f172a' },
   itemMeta: { fontSize: 9, color: '#94a3b8', marginTop: 2, fontFamily: 'monospace' },
   stockHint: { color: '#059669' },
+  stockHintWarn: { color: '#dc2626', fontWeight: '700' },
   qtyControl: {
     flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0',
     borderRadius: 8, overflow: 'hidden', backgroundColor: '#f8fafc',

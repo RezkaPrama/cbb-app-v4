@@ -72,7 +72,9 @@ export default function ArticleSearchModal({ visible, onClose, onPick }: Props) 
 
   const handlePick = (item: ArticleSearchResult) => {
     const availablePcs = stockMap[item.id] ?? 0;
-    if (availablePcs <= 0) return; // habis, tidak bisa dipilih
+    // Stok habis / kurang tetap boleh ditambahkan (misal untuk PO indent/backorder).
+    // Info stok tetap dibawa (available_pcs) supaya tetap kelihatan di keranjang & bisa
+    // dipakai untuk warning, cuma tidak lagi memblokir.
 
     const priceSell = parseFloat(String(item.price_sell).replace(/[^\d.-]/g, '')) || 0;
 
@@ -132,9 +134,8 @@ export default function ArticleSearchModal({ visible, onClose, onPick }: Props) 
 
                 return (
                   <TouchableOpacity
-                    style={[styles.itemRow, isHabis && { opacity: 0.5 }]}
+                    style={styles.itemRow}
                     onPress={() => handlePick(item)}
-                    disabled={isHabis}
                   >
                     <View style={{ flex: 1 }}>
                       <View style={styles.rowInline}>
@@ -152,7 +153,7 @@ export default function ArticleSearchModal({ visible, onClose, onPick }: Props) 
                         <ActivityIndicator size="small" color="#94a3b8" />
                       ) : isHabis ? (
                         <View style={styles.stockBadgeHabis}>
-                          <Text style={styles.stockBadgeText}>Habis</Text>
+                          <Text style={styles.stockBadgeText}>Habis (bisa indent)</Text>
                         </View>
                       ) : (
                         <View style={styles.stockBadgeAda}>
