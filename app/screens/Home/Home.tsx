@@ -30,6 +30,7 @@ import { logout } from '../../redux/Store/authSlice';
 import HistorySales from '../../components/Banner/HistorySales';
 import BannerBayarPiutang from '../../components/Banner/BannerBayarPiutang';
 import SalesOrderPOBanner from '../../components/Banner/SalesOrderPOBanner';
+import VerificationBanner from '../../components/Banner/VerificationBanner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,8 +43,8 @@ interface UserDetails {
     branch_name?: string;
     position_name?: string;
     profile_pic?: string;
-    position?: { id: number; name: string };
-    department?: { id: number; name: string };
+    position?: { id: string; name: string };
+    department?: { id: string; name: string };
     branch?: { id: number; name: string };
 }
 
@@ -110,6 +111,8 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                 setIsLoading(true);
                 const storedToken = await getDataLara<string>('tokenUser');
                 const storedUserDetails = await getDataLara<UserDetails>('dataDetailUser');
+                // console.log('Stored Token:', storedToken);
+                console.log('Stored User Details:', storedUserDetails);
 
                 if (!storedToken) {
                     navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
@@ -249,6 +252,9 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
 
                     {/* 4. Manajemen Rak CBB — navy, badge "Modul Baru v5", dua tombol */}
                     <SalesOrderPOBanner />
+
+                    {/* 4. Verifikasi Sales Order — hanya tampil untuk ASUP (idjab O-041) */}
+                    {userDetails?.position?.id === 'O-041' && <VerificationBanner navigation={navigation} />}
 
                     {/* 3. bayar piutang — navy, badge "Modul Baru v5", dua tombol */}
                     <View style={styles.bannerRakWrapper}>

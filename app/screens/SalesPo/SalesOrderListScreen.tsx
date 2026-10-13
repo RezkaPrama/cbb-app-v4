@@ -12,13 +12,11 @@ import {
   fetchSalesOrders, setSearch, setStatusFilter, cancelSalesOrder, SalesOrderStatusFilter,
 } from '../../features/salesOrder/salesOrderSlice';
 import apiService, { SalesOrderListItem, SalesOrderDetail } from '../../service/apiService';
-// ^ sesuaikan path apiService dengan lokasi asli di project Anda
 import { useAppDispatch, useAppSelector } from '../../redux/Store/store-hooks';
 import { formatRupiah } from '../Piutang/utils/formatRupiah';
 import { useDebouncedValue } from '../Piutang/hooks/useDebouncedValue';
 import PiutangHeader from '../Piutang/PiutangHeader';
-// ^ header-nya generic (title/subtitle/onBackPress/rightBadge), jadi di-reuse langsung.
-//   Kalau mau, tinggal rename file itu jadi MobileHeader biar nggak "nyangkut" nama piutang.
+import POTypeSelectModal, { POType } from './components/POTypeSelectModal';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -48,6 +46,7 @@ export default function SalesOrderListScreen({ navigation }: Props) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detailCache, setDetailCache] = useState<Record<number, SalesOrderDetail>>({});
   const [detailLoadingId, setDetailLoadingId] = useState<number | null>(null);
+  const [showPOTypeModal, setShowPOTypeModal] = useState(false);
 
   useEffect(() => {
     dispatch(setSearch(debouncedSearch));
@@ -237,12 +236,21 @@ export default function SalesOrderListScreen({ navigation }: Props) {
 
       <TouchableOpacity
         style={[styles.fab, { bottom: 16 + insets.bottom }]}
-        onPress={() => navigation.navigate('SalesOrderFormScreen')}
+        onPress={() => setShowPOTypeModal(true)}
         activeOpacity={0.85}
       >
         <Ionicons name="add" size={20} color="#fff" />
         <Text style={styles.fabText}>Buat PO Baru</Text>
       </TouchableOpacity>
+
+      <POTypeSelectModal
+        visible={showPOTypeModal}
+        onClose={() => setShowPOTypeModal(false)}
+        onSelect={(poType: POType) => {
+          setShowPOTypeModal(false);
+          navigation.navigate('SalesOrderFormScreen', { poType });
+        }}
+      />
     </SafeAreaView>
   );
 }

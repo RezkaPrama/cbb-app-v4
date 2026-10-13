@@ -19,12 +19,14 @@ export interface PickedArticle {
 }
 
 interface Props {
+  idmerk?: string; // khusus PO Grosir: 'M-032'
   visible: boolean;
   onClose: () => void;
   onPick: (article: PickedArticle) => void;
+  productClasses?: string[]; // ['Reguler'] | ['Deadstock'] | ['Reguler','Deadstock']
 }
 
-export default function ArticleSearchModal({ visible, onClose, onPick }: Props) {
+export default function ArticleSearchModal({ visible, onClose, onPick, productClasses = ['Reguler'], idmerk }: Props) {
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 300);
   const [results, setResults] = useState<ArticleSearchResult[]>([]);
@@ -46,7 +48,7 @@ export default function ArticleSearchModal({ visible, onClose, onPick }: Props) 
     let cancelled = false;
     setLoading(true);
 
-    apiService.searchArticles(q).then(async (res) => {
+    apiService.searchArticles(q, productClasses, idmerk).then(async (res) => {
       if (cancelled) return;
       const products = (res.success && (res as any).products) || [];
       setResults(products);
@@ -143,6 +145,11 @@ export default function ArticleSearchModal({ visible, onClose, onPick }: Props) 
                           <Text style={styles.barcodeBadgeText}>{item.barcode || '-'}</Text>
                         </View>
                         <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                        {productClasses.length > 1 && !!(item as any).product_class && (
+                          <View style={styles.classBadge}>
+                            <Text style={styles.classBadgeText}>{(item as any).product_class}</Text>
+                          </View>
+                        )}
                       </View>
                       <Text style={styles.itemMeta}>🏷 {item.quantity} pcs/pack</Text>
                     </View>
@@ -196,6 +203,8 @@ const styles = StyleSheet.create({
   rowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   barcodeBadge: { backgroundColor: '#e2e8f0', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
   barcodeBadgeText: { fontSize: 9, fontWeight: '700', color: '#475569', fontFamily: 'monospace' },
+  classBadge: { backgroundColor: '#ede9fe', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
+  classBadgeText: { fontSize: 8, fontWeight: '800', color: '#7c3aed' },
   itemName: { fontSize: 12, fontWeight: '800', color: '#0f172a', flexShrink: 1 },
   itemMeta: { fontSize: 9.5, color: '#94a3b8', marginTop: 2, fontFamily: 'monospace' },
   itemPrice: { fontSize: 12, fontWeight: '800', color: '#0091ff', fontFamily: 'monospace' },

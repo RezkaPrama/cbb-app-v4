@@ -15,12 +15,15 @@ interface Props {
   diskon2Rp: number;
   diskon3Rp: number;
   netto: number;
+  showDiskon2?: boolean; // default true — di-set false khusus PO Grosir (dihilangkan total, bukan cuma disabled)
+  showDiskon3?: boolean; // default true — di-set false khusus PO Grosir
 }
 
 export default function DiscountBreakdownBox({
   hpp, bruto, diskon1, diskon2, diskon3,
   onChangeDiskon1, onChangeDiskon2, onChangeDiskon3,
   diskon1Rp, diskon2Rp, diskon3Rp, netto,
+  showDiskon2 = true, showDiskon3 = true,
 }: Props) {
   return (
     <View style={{ gap: 10 }}>
@@ -37,14 +40,18 @@ export default function DiscountBreakdownBox({
           <Text style={styles.discLabel}>Diskon 1</Text>
           <Text style={styles.discValue}>(-) {formatRupiah(diskon1Rp)}</Text>
         </View>
-        <View style={[styles.rowBetween, styles.discRow]}>
-          <Text style={styles.discLabel}>Diskon 2</Text>
-          <Text style={styles.discValue}>(-) {formatRupiah(diskon2Rp)}</Text>
-        </View>
-        <View style={[styles.rowBetween, styles.discRow]}>
-          <Text style={styles.discLabel}>Diskon 3</Text>
-          <Text style={styles.discValue}>(-) {formatRupiah(diskon3Rp)}</Text>
-        </View>
+        {showDiskon2 && (
+          <View style={[styles.rowBetween, styles.discRow]}>
+            <Text style={styles.discLabel}>Diskon 2</Text>
+            <Text style={styles.discValue}>(-) {formatRupiah(diskon2Rp)}</Text>
+          </View>
+        )}
+        {showDiskon3 && (
+          <View style={[styles.rowBetween, styles.discRow]}>
+            <Text style={styles.discLabel}>Diskon 3</Text>
+            <Text style={styles.discValue}>(-) {formatRupiah(diskon3Rp)}</Text>
+          </View>
+        )}
         <View style={[styles.rowBetween, styles.nettoRow]}>
           <Text style={styles.nettoLabel}>Netto</Text>
           <Text style={styles.nettoValue}>{formatRupiah(netto)}</Text>
@@ -53,7 +60,7 @@ export default function DiscountBreakdownBox({
 
       <View style={styles.discInputRow}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.inputLabel}>Diskon 1 (%)</Text>
+          <Text style={styles.inputLabel}>Diskon 1 (%) — Otomatis</Text>
           <TextInput
             style={[styles.discInput, styles.discInputDisabled]}
             keyboardType="numeric"
@@ -61,24 +68,28 @@ export default function DiscountBreakdownBox({
             editable={false}
           />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.inputLabel}>Diskon 2 (%)</Text>
-          <TextInput
-            style={styles.discInput}
-            keyboardType="numeric"
-            value={String(diskon2)}
-            onChangeText={(v) => onChangeDiskon2(parseFloat(v) || 0)}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.inputLabel}>Diskon 3 (%)</Text>
-          <TextInput
-            style={styles.discInput}
-            keyboardType="numeric"
-            value={String(diskon3)}
-            onChangeText={(v) => onChangeDiskon3(parseFloat(v) || 0)}
-          />
-        </View>
+        {showDiskon2 && (
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Diskon 2 (%)</Text>
+            <TextInput
+              style={styles.discInput}
+              keyboardType="numeric"
+              value={String(diskon2)}
+              onChangeText={(v) => onChangeDiskon2(parseFloat(v) || 0)}
+            />
+          </View>
+        )}
+        {showDiskon3 && (
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>Diskon 3 (%)</Text>
+            <TextInput
+              style={styles.discInput}
+              keyboardType="numeric"
+              value={String(diskon3)}
+              onChangeText={(v) => onChangeDiskon3(parseFloat(v) || 0)}
+            />
+          </View>
+        )}
       </View>
     </View>
   );

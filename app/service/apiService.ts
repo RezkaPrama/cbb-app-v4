@@ -315,6 +315,7 @@ interface CreateSalesOrderPayload {
   discount_percentage_2?: number;
   discount_percentage_3?: number;
   note?: string;
+  id_user?: number;
   products: SalesOrderProductItem[];
 }
 
@@ -438,6 +439,115 @@ interface StockCheckMultipleItem {
   available_dz: number;
 }
 
+interface JenisBarangOption {
+  id_jenis_barang: string;
+  nama_jenis_barang: string;
+}
+
+// ============================================================================
+// TAMBAHAN untuk apiService.ts — VERIFIKASI SALES PO (khusus ASUP)
+// ============================================================================
+
+const SO_VERIFICATION_BASE = '/sales-po/verification';
+
+// ---------- TYPES ----------
+
+interface VerificationTeamMember {
+  id: number;
+  name: string;
+  username: string;
+}
+
+interface VerificationTeamResponse {
+  asup: { id: number; name: string };
+  members: VerificationTeamMember[];
+}
+
+interface VerificationSummaryResponse {
+  pending_count: number;
+}
+
+// Sama seperti SalesOrderListItem, ditambah sales_name (nama sales pembuat PO)
+interface VerificationOrderItem extends SalesOrderListItem {
+  sales_name: string;
+  id_sales_order: string;
+}
+
+interface VerificationListResponse {
+  current_page: number;
+  last_page: number;
+  total: number;
+  data: VerificationOrderItem[];
+}
+
+// ---------- EDIT PRODUK PO (ASUP) — BARU ----------
+
+interface StockWarningItem {
+  id_product: number;
+  product_name: string;
+  requested_pcs: number;
+  available_pcs: number;
+  shortage_pcs: number;
+}
+
+// Payload PUT /sales-po/verification/{id}/update-products — sama persis
+// dengan struktur products pada CreateSalesOrderPayload, ditambah opsi
+// override diskon (kalau tidak dikirim, server pakai diskon PO yang sudah ada).
+interface UpdateSalesOrderProductsPayload {
+  products: SalesOrderProductItem[];
+  discount_percentage?: number;
+  discount_percentage_2?: number;
+  discount_percentage_3?: number;
+}
+
+interface UpdateVerificationProductsRawResponse {
+  success: boolean;
+  message?: string;
+  data?: SalesOrderListItem; // baris PO setelah total dihitung ulang
+  stock_warnings?: StockWarningItem[];
+  errors?: Record<string, string[]> | null;
+}
+
+// ---------- TAMBAH PELANGGAN BARU (mobile, oleh sales) ----------
+
+interface JenisTokoOption { id_jenis_toko: string; jenis_toko: string; }
+interface CabangOption { kode_cab: string; cabang: string; }
+interface RayonOption { kode_rayon: string; rayon: string; }
+interface KotaOption { id_kota: string; kota: string; }
+
+interface SalesmanOption { idemployee: string; nama: string; }
+
+interface QuickAddCustomerPayload {
+  idkota: string;
+  nama: string;
+  alamat: string;
+  id_jenis_toko: string;
+  kode_cab: string;
+  register: string; // wajib, dipilih manual
+  kode_rayon?: string;
+  telepon?: string;
+  telepon_pemilik?: string;
+  nama_pemilik?: string;
+  kecamatan?: string;
+  kelurahan?: string;
+  provinsi?: string;
+  ktp?: string;
+  latitude?: number;   // opsional — fitur GPS disembunyikan sementara
+  longitude?: number;
+  keterangan?: string;
+  foto_ktp?: PhotoFile;    // opsional
+  foto_toko?: PhotoFile;   // opsional
+  foto_survey?: PhotoFile; // opsional
+}
+
+interface QuickAddCustomerRawResponse {
+  success: boolean;
+  message?: string;
+  data?: CustomerAutofillResult & { status: string };
+  discounts?: Record<string, number>;
+  errors?: Record<string, string[]> | null;
+}
+
 type QueryParams = Record<string, string | number | boolean>;
 
 // ============ API SERVICE CLASS ============
@@ -457,6 +567,17 @@ class ApiService {
       return token ?? null;
     } catch (error) {
       console.error('Error getting auth token:', error);
+      return null;
+    }
+  }
+
+  // Tambahkan di dalam class ApiService, dekat getAuthToken()
+  async getCurrentUser(): Promise<UserProfile | null> {
+    try {
+      const user = await getDataLara<UserProfile>('dataDetailUser');
+      return user ?? null;
+    } catch (error) {
+      console.error('Error getting current user:', error);
       return null;
     }
   }
@@ -1145,8 +1266,13 @@ class ApiService {
 
   // ============ SALES ORDER (PO) APIs ============
 
-  async generateSalesOrderCode(): Promise<GenerateCodeRawResponse> {
-    return (await this.makeRequest(`${SO_BASE}/generate-code`)) as unknown as GenerateCodeRawResponse;
+  // async generateSalesOrderCode(): Promise<GenerateCodeRawResponse> {
+  //   return (await this.makeRequest(`${SO_BASE}/generate-code`)) as unknown as GenerateCodeRawResponse;
+  // }
+
+  async generateSalesOrderCode(idJenisBarang?: string | number): Promise<ApiResponse<{ code: string }>> {
+    const queryString = idJenisBarang ? `?${new URLSearchParams({ id_jenis_barang: String(idJenisBarang) })}` : '';
+    return await this.makeRequest(`${SO_BASE}/generate-code${queryString}`);
   }
 
   async searchSalesOrderCustomers(search: string): Promise<CustomerSearchRawResponse> {
@@ -1159,9 +1285,44 @@ class ApiService {
   }
 
   // Cari artikel untuk popup — reuse endpoint produk yang sudah ada (top-level, bukan di prefix sales-po)
-  async searchArticles(query: string): Promise<ApiResponse<{ products: ArticleSearchResult[] }>> {
-    const queryString = new URLSearchParams({ search: query, limit: '20', set_sell: '1' }).toString();
-    return await this.makeRequest(`/v1/products/search-for-mobile?${queryString}`);
+  // async searchArticles(query: string): Promise<ApiResponse<{ products: ArticleSearchResult[] }>> {
+  //   const queryString = new URLSearchParams({ search: query, limit: '20', set_sell: '1' }).toString();
+  //   return await this.makeRequest(`/v1/products/search-for-mobile?${queryString}`);
+  // }
+
+  // async searchArticles(
+  //   query: string,
+  //   productClasses: string[] = ['Reguler']
+  // ): Promise<ApiResponse<{ products: ArticleSearchResult[] }>> {
+  //   const queryString = new URLSearchParams({
+  //     search: query,
+  //     limit: '20',
+  //     set_sell: '1',
+  //     product_class: productClasses.join(','),
+  //   }).toString();
+  //   return await this.makeRequest(`/v1/products/search-for-send?${queryString}`);
+  // }
+
+  async searchArticles(
+    query: string,
+    productClasses: string[] = ['Reguler'],
+    idmerk?: string
+  ): Promise<ApiResponse<{ products: ArticleSearchResult[] }>> {
+    const params: Record<string, string> = {
+      search: query,
+      limit: '20',
+      set_sell: '1',
+      product_class: productClasses.join(','),
+    };
+    if (idmerk) params.idmerk = idmerk;
+
+    const queryString = new URLSearchParams(params).toString();
+    return await this.makeRequest(`/v1/products/search-for-send?${queryString}`);
+  }
+
+  // BARU — list jenis barang untuk select2 di form PO
+  async getJenisBarangList(): Promise<ApiResponse<JenisBarangOption[]>> {
+    return await this.makeRequest(`${SO_BASE}/jenis-barang`);
   }
 
   async findArticleByBarcode(barcode: string): Promise<ApiResponse<{ product: ArticleSearchResult }>> {
@@ -1236,6 +1397,125 @@ class ApiService {
     });
   }
 
+  // ============ TAMBAH PELANGGAN BARU (SALES MOBILE) ============
+
+  async getJenisTokoOptions(): Promise<ApiResponse<JenisTokoOption[]>> {
+    return await this.makeRequest(`${SO_BASE}/customers/jenis-toko`);
+  }
+
+  async getCabangOptions(): Promise<ApiResponse<CabangOption[]>> {
+    return await this.makeRequest(`${SO_BASE}/customers/cabang`);
+  }
+
+  async getRayonOptions(): Promise<ApiResponse<RayonOption[]>> {
+    return await this.makeRequest(`${SO_BASE}/customers/rayon`);
+  }
+
+  async searchKota(search: string): Promise<ApiResponse<KotaOption[]>> {
+    const queryString = new URLSearchParams({ search }).toString();
+    return await this.makeRequest(`${SO_BASE}/customers/kota?${queryString}`);
+  }
+
+  async previewGenerateIdcust(idKota: string): Promise<{ success: boolean; idcust?: string; message?: string }> {
+    const queryString = new URLSearchParams({ id_kota: idKota }).toString();
+    return (await this.makeRequest(`${SO_BASE}/customers/generate-idcust?${queryString}`)) as any;
+  }
+
+  async searchSalesman(search: string): Promise<ApiResponse<SalesmanOption[]>> {
+    const queryString = new URLSearchParams({ search }).toString();
+    return await this.makeRequest(`${SO_BASE}/customers/salesman?${queryString}`);
+  }
+
+  /**
+   * Tambah pelanggan baru dari sales (mobile). Selalu multipart karena 3 foto
+   * wajib (KTP, toko, survey) — pola sama dengan checkIn/checkOut/submitPiutangPayment.
+   * Server memaksa status jadi "BELUM AKTIF" dan register = idemployee user login,
+   * jadi keduanya TIDAK dikirim dari sini.
+   */
+  async addCustomer(payload: QuickAddCustomerPayload): Promise<QuickAddCustomerRawResponse> {
+    const formData = new FormData();
+    formData.append('idkota', payload.idkota);
+    formData.append('nama', payload.nama);
+    formData.append('alamat', payload.alamat);
+    formData.append('id_jenis_toko', payload.id_jenis_toko);
+    formData.append('kode_cab', payload.kode_cab);
+    formData.append('register', payload.register);
+
+    if (payload.kode_rayon) formData.append('kode_rayon', payload.kode_rayon);
+    if (payload.telepon) formData.append('telepon', payload.telepon);
+    if (payload.telepon_pemilik) formData.append('telepon_pemilik', payload.telepon_pemilik);
+    if (payload.nama_pemilik) formData.append('nama_pemilik', payload.nama_pemilik);
+    if (payload.kecamatan) formData.append('kecamatan', payload.kecamatan);
+    if (payload.kelurahan) formData.append('kelurahan', payload.kelurahan);
+    if (payload.provinsi) formData.append('provinsi', payload.provinsi);
+    if (payload.ktp) formData.append('ktp', payload.ktp);
+    if (payload.keterangan) formData.append('keterangan', payload.keterangan);
+    if (payload.latitude !== undefined) formData.append('latitude', String(payload.latitude));
+    if (payload.longitude !== undefined) formData.append('longitude', String(payload.longitude));
+
+    const appendPhoto = (field: string, photo?: PhotoFile, fallbackName?: string) => {
+      if (!photo) return; // opsional — lewati kalau tidak diisi
+      formData.append(field, {
+        uri: photo.uri,
+        type: photo.type || 'image/jpeg',
+        name: photo.fileName || fallbackName,
+      } as unknown as Blob);
+    };
+    appendPhoto('foto_ktp', payload.foto_ktp, `ktp_${Date.now()}.jpg`);
+    appendPhoto('foto_toko', payload.foto_toko, `toko_${Date.now()}.jpg`);
+    appendPhoto('foto_survey', payload.foto_survey, `survey_${Date.now()}.jpg`);
+
+    const token = await this.getAuthToken();
+    if (!token) {
+      return { success: false, message: 'Token autentikasi tidak ditemukan. Silakan login kembali.' };
+    }
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    };
+
+    try {
+      const response = await fetch(`${this.baseURL}${SO_BASE}/customers`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        return { success: false, message: 'Sesi Anda telah berakhir. Silakan login kembali.' };
+      }
+      if (response.status === 401) {
+        return { success: false, message: 'Sesi Anda telah berakhir. Silakan login kembali.' };
+      }
+
+      const responseText = await response.text();
+      let data: QuickAddCustomerRawResponse;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        return { success: false, message: 'Format respons dari server tidak valid. Silakan coba lagi.' };
+      }
+
+      if (!response.ok) {
+        return {
+          success: false,
+          message: data.message || `Gagal menyimpan pelanggan (HTTP ${response.status})`,
+          errors: data.errors || null,
+        };
+      }
+
+      return data;
+    } catch (error) {
+      const err = error as Error;
+      if (err.message.includes('Network request failed')) {
+        return { success: false, message: 'Tidak ada koneksi internet. Periksa koneksi Anda.' };
+      }
+      return { success: false, message: err.message || 'Terjadi kesalahan saat menyimpan pelanggan' };
+    }
+  }
+
   // ============ PURCHASE PO APIs ============
   async getPurchasePOs(params: QueryParams = {}): Promise<ApiResponse<PurchasePOData[]>> {
     const queryString = new URLSearchParams(params as Record<string, string>).toString();
@@ -1265,6 +1545,51 @@ class ApiService {
     return await this.makeRequest(`/purchase-po/${id}`, {
       method: 'DELETE',
     });
+  }
+
+  // ============ VERIFIKASI SALES PO (ASUP) ============
+
+  async getVerificationTeam(): Promise<ApiResponse<VerificationTeamResponse>> {
+    return await this.makeRequest(`${SO_VERIFICATION_BASE}/team`);
+  }
+
+  async getVerificationSummary(): Promise<ApiResponse<VerificationSummaryResponse>> {
+    return await this.makeRequest(`${SO_VERIFICATION_BASE}/summary`);
+  }
+
+  async getVerificationList(params: QueryParams = {}): Promise<ApiResponse<VerificationListResponse>> {
+    const queryString = new URLSearchParams(params as Record<string, string>).toString();
+    const endpoint = queryString ? `${SO_VERIFICATION_BASE}?${queryString}` : SO_VERIFICATION_BASE;
+    return await this.makeRequest(endpoint);
+  }
+
+  async getVerificationDetail(id: number): Promise<ApiResponse<SalesOrderDetail>> {
+    return await this.makeRequest(`${SO_VERIFICATION_BASE}/${id}`);
+  }
+
+  async approveVerification(id: number): Promise<ApiResponse<null>> {
+    return await this.makeRequest(`${SO_VERIFICATION_BASE}/${id}/approve`, {
+      method: 'POST',
+    });
+  }
+
+  async cancelVerification(id: number, reason: string): Promise<ApiResponse<null>> {
+    return await this.makeRequest(`${SO_VERIFICATION_BASE}/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  // ASUP mengedit daftar produk PO yang masih PENDING (tambah/hapus artikel,
+  // ubah qty & harga). Server mengganti seluruh detail lama & hitung ulang total.
+  async updateVerificationProducts(
+    id: number,
+    payload: UpdateSalesOrderProductsPayload
+  ): Promise<UpdateVerificationProductsRawResponse> {
+    return (await this.makeRequest(`${SO_VERIFICATION_BASE}/${id}/update-products`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })) as unknown as UpdateVerificationProductsRawResponse;
   }
 
   // ============ CUSTOMER APIs ============
@@ -1486,4 +1811,17 @@ export type {
   CustomerSearchListResponse,
   ArticleSearchResult,
   StockCheckResponse,
+  VerificationOrderItem,
+  VerificationTeamMember,
+  StockWarningItem,
+  UpdateSalesOrderProductsPayload,
+  UpdateVerificationProductsRawResponse,
+  JenisTokoOption,
+  CabangOption,
+  RayonOption,
+  KotaOption,
+  QuickAddCustomerPayload,
+  QuickAddCustomerRawResponse,
+  SalesmanOption,
+  JenisBarangOption,
 };

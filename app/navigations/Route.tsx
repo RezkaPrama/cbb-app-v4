@@ -20,6 +20,8 @@ import PiutangListScreen from '../screens/Piutang/PiutangListScreen';
 import PiutangFormScreen from '../screens/Piutang/PiutangFormScreen';
 import SalesOrderListScreen from '../screens/SalesPo/SalesOrderListScreen';
 import SalesOrderFormScreen from '../screens/SalesPo/SalesOrderFormScreen';
+import SalesOrderVerificationListScreen from '../screens/SalesOrderVerification/SalesOrderVerificationListScreen';
+import SalesOrderVerificationEditScreen from '../screens/SalesOrderVerification/SalesOrderVerificationEditScreen';
 
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
@@ -41,9 +43,11 @@ export type RootStackParamList = {
   ShelfScanner: undefined;
   TrackHistoryScreen: undefined;
   PiutangListScreen: undefined;
-  PiutangFormScreen: undefined;  
+  PiutangFormScreen: undefined;
   SalesOrderListScreen: undefined;
   SalesOrderFormScreen: undefined;
+  SalesOrderVerificationListScreen: undefined;
+  SalesOrderVerificationEditScreen: undefined;
   // ✅ FIX: tambahkan tipe params yang sesuai dengan ShelfFormScreenProps
   ShelfForm: {
     scannedSerial?: string;
@@ -170,6 +174,17 @@ const Routes: React.FC = () => {
               component={SalesOrderFormScreen}
               options={{ headerShown: false, title: 'Form Sales Order' }}
             />
+            <Stack.Screen
+              name="SalesOrderVerificationListScreen"
+              component={SalesOrderVerificationListScreen}
+              options={{ headerShown: false, title: 'Verifikasi Sales Order' }}
+            />
+            <Stack.Screen
+              name="SalesOrderVerificationEditScreen"
+              component={SalesOrderVerificationEditScreen as React.ComponentType<any>}
+              options={{ headerShown: false, title: 'Edit Sales Order' }}
+            />
+
           </>
         )}
       </Stack.Navigator>

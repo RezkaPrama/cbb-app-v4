@@ -5,11 +5,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import apiService, {
-    CustomerSearchResult, CustomerAutofillResult, CreateSalesOrderPayload,
+    CustomerSearchResult, CustomerAutofillResult, CreateSalesOrderPayload, JenisBarangOption,
 } from '../../service/apiService';
 // ^ sesuaikan path apiService dengan lokasi asli di project Anda
 
@@ -22,6 +23,7 @@ import ArticleSearchModal, { PickedArticle } from './components/ArticleSearchMod
 import CartTable from './components/CartTable';
 import DiscountBreakdownBox from './components/DiscountBreakdownBox';
 import POSuccessModal from './components/POSuccessModal';
+import { POType } from './components/POTypeSelectModal';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -41,18 +43,39 @@ export interface CartItem {
 
 interface Props {
     navigation: StackNavigationProp<any>;
+    route: RouteProp<{ params: { poType?: POType } }, 'params'>;
 }
 
 const todayISO = () => new Date().toISOString().split('T')[0];
 
-// TODO: sesuaikan sumber pilihan Jenis Transaksi & Jenis Barang kalau ternyata
-// harus dinamis dari API (mis. apiService.getJenisBarangList()).
+// TODO: sesuaikan sumber pilihan Jenis Transaksi kalau ternyata harus dinamis dari API.
 const J_TRANS_OPTIONS = ['PUTUS', 'RETUNABLE', 'KONSINYASI', 'COUNTER', 'COUNTER NON SPG'];
 
-export default function SalesOrderFormScreen({ navigation }: Props) {
+const PO_TYPE_LABEL: Record<POType, string> = {
+    REGULER: 'PO Reguler',
+    DEADSTOCK: 'PO Deadstock',
+    GROSIR: 'PO Grosir',
+};
+
+// Kelas produk yang boleh dicari di popup artikel, tergantung tipe PO.
+const PO_TYPE_PRODUCT_CLASSES: Record<POType, string[]> = {
+    REGULER: ['Reguler'],
+    DEADSTOCK: ['Deadstock'],
+    GROSIR: ['Reguler', 'Deadstock'],
+};
+
+export default function SalesOrderFormScreen({ navigation, route }: Props) {
+    const poType: POType = route.params?.poType ?? 'REGULER';
+    const productClasses = PO_TYPE_PRODUCT_CLASSES[poType];
+    const priceEditable = poType === 'GROSIR';
+    const showDiskon2And3 = poType !== 'GROSIR';
+    // PO Grosir cuma boleh jual produk dengan merk ini
+    const idmerk = poType === 'GROSIR' ? 'M-032' : undefined;
+
     // --- Header PO fields ---
     const [jTrans, setJTrans] = useState<string>('PUTUS');
-    const [idJenisBarang, setIdJenisBarang] = useState<number | null>(null);
+    const [idJenisBarang, setIdJenisBarang] = useState<string | null>(null);
+    const [jenisBarangList, setJenisBarangList] = useState<JenisBarangOption[]>([]);
     const [poCode, setPoCode] = useState<string>('');
     const [loadingCode, setLoadingCode] = useState(true);
     const [tanggalFaktur, setTanggalFaktur] = useState<Date>(new Date());
@@ -86,18 +109,40 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
     const [diskon1, setDiskon1] = useState(0);
     const [diskon2, setDiskon2] = useState(0);
     const [diskon3, setDiskon3] = useState(0);
+
+    // PO Grosir tidak punya Diskon 2 & 3 sama sekali — pastikan nilainya selalu 0
+    // walau ada state lama/tersisa, supaya tidak diam-diam ikut mempengaruhi total.
+    useEffect(() => {
+        if (poType === 'GROSIR') {
+            setDiskon2(0);
+            setDiskon3(0);
+        }
+    }, [poType]);
     const [catatan, setCatatan] = useState('');
 
     const [submitting, setSubmitting] = useState(false);
     const [successResult, setSuccessResult] = useState<{ code: string } | null>(null);
 
-    // Generate No PO begitu screen dibuka
+    // Muat daftar jenis barang untuk select-nya
     useEffect(() => {
-        apiService.generateSalesOrderCode().then((res) => {
-            setLoadingCode(false);
-            if (res.success && res.code) setPoCode(res.code);
+        apiService.getJenisBarangList().then((res) => {
+            if (res.success && res.data) setJenisBarangList(res.data);
         });
     }, []);
+
+    // Generate No PO — jalan pertama kali screen dibuka (tanpa jenis barang dulu,
+    // suffix default KK), lalu di-generate ULANG begitu jenis barang dipilih.
+    useEffect(() => {
+        setLoadingCode(true);
+        apiService.generateSalesOrderCode(idJenisBarang ?? undefined).then((res) => {
+            setLoadingCode(false);
+            if (res.success && res.data?.code) setPoCode(res.data.code);
+        });
+    }, [idJenisBarang]);
+
+    const handleChangeJenisBarang = (id: string) => {
+        setIdJenisBarang(id === idJenisBarang ? null : id);
+    };
 
     // Cari pelanggan (debounced)
     useEffect(() => {
@@ -187,6 +232,13 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
         setCartItems((prev) => prev.filter((i) => i.id_product !== id_product));
     };
 
+    // Khusus PO Grosir — sales bisa timpa harga per artikel sesuai perjanjian custom
+    const handleUpdatePrice = (id_product: number, newPrice: number) => {
+        setCartItems((prev) => prev.map((item) => item.id_product === id_product
+            ? { ...item, price_pack: newPrice, subtotal: item.qty * newPrice }
+            : item));
+    };
+
     // --- Totals ---
     const totals = useMemo(() => {
         const totalQtyPack = cartItems.reduce((acc, i) => acc + i.qty, 0);
@@ -267,9 +319,9 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
             <SafeAreaView edges={['top']} style={styles.headerBlue}>
                 <PiutangHeader
                     title="Form Input Purchase Order"
-                    subtitle="Entry Order Penjualan Sales Mobile"
+                    subtitle={`${PO_TYPE_LABEL[poType]} • Entry Order Penjualan Sales Mobile`}
                     onBackPress={() => navigation.goBack()}
-                    rightBadge="Order Mobile"
+                    rightBadge={PO_TYPE_LABEL[poType]}
                 />
             </SafeAreaView>
 
@@ -293,6 +345,23 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
                                         style={[styles.chip, jTrans === opt && styles.chipActive]}
                                     >
                                         <Text style={[styles.chipText, jTrans === opt && styles.chipTextActive]}>{opt}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+
+                        <View>
+                            <Text style={styles.fieldLabel}>Jenis Barang</Text>
+                            <View style={styles.chipRow}>
+                                {jenisBarangList.map((jb) => (
+                                    <TouchableOpacity
+                                        key={jb.id_jenis_barang}
+                                        onPress={() => handleChangeJenisBarang(jb.id_jenis_barang)}
+                                        style={[styles.chip, idJenisBarang === jb.id_jenis_barang && styles.chipActive]}
+                                    >
+                                        <Text style={[styles.chipText, idJenisBarang === jb.id_jenis_barang && styles.chipTextActive]}>
+                                            {jb.nama_jenis_barang}
+                                        </Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>
@@ -378,8 +447,18 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
                                 onUpdateQty={handleUpdateQty}
                                 onRemove={handleRemoveItem}
                                 flashProductId={flashProductId}
+                                priceEditable={priceEditable}
+                                onUpdatePrice={handleUpdatePrice}
                             />
                         </View>
+
+                        {priceEditable && (
+                            <View style={styles.grosirInfoBox}>
+                                <Text style={styles.grosirInfoText}>
+                                    💰 PO Grosir — harga tiap artikel bisa diketik manual sesuai perjanjian dengan pelanggan.
+                                </Text>
+                            </View>
+                        )}
 
                         <View style={{ marginTop: 12 }}>
                             <DiscountBreakdownBox
@@ -394,6 +473,8 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
                                 diskon1Rp={totals.diskon1Rp}
                                 diskon2Rp={totals.diskon2Rp}
                                 diskon3Rp={totals.diskon3Rp}
+                                showDiskon2={showDiskon2And3}
+                                showDiskon3={showDiskon2And3}
                                 netto={totals.netto}
                             />
                         </View>
@@ -446,6 +527,8 @@ export default function SalesOrderFormScreen({ navigation }: Props) {
                 visible={showArticleModal}
                 onClose={() => setShowArticleModal(false)}
                 onPick={handlePickArticle}
+                productClasses={productClasses}
+                idmerk={idmerk}
             />
 
             <POSuccessModal
@@ -492,6 +575,8 @@ const styles = StyleSheet.create({
     statusBar: { backgroundColor: '#e0f2fe', borderWidth: 1, borderColor: '#bae6fd', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
     statusBarText: { fontSize: 10, fontWeight: '700', color: '#075985', fontFamily: 'monospace' },
     statusBarBold: { fontWeight: '900' },
+    grosirInfoBox: { backgroundColor: '#f5f3ff', borderWidth: 1, borderColor: '#ddd6fe', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 8 },
+    grosirInfoText: { fontSize: 10, color: '#5b21b6', fontWeight: '600' },
     footer: {
         flexDirection: 'row', gap: 8, padding: 12,
         backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0',
